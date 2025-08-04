@@ -9,18 +9,41 @@ use trading_vault::types::{Self, TradableAsset, MakerInfo};
 
 // === Errors ===
 
-const ENotZeroAmount: u64 = 1;
-const ENotZeroAddress: u64 = 2;
-const EOnlyByMaker: u64 = 3;
-const EOnlyByOrder: u64 = 4;
-const EInsufficientStake: u64 = 5;
-const EMakerAlreadyRegistered: u64 = 6;
-const EMakerNotAvailable: u64 = 7;
-const EInsufficientCollateral: u64 = 8;
-const ECollateralMustBeZero: u64 = 9;
-const ENotZeroTotalAssetAvailable: u64 = 10;
-const ESameValue: u64 = 11;
-const EUnauthorized: u64 = 12;
+#[error]
+const ENotZeroAmount: vector<u8> = b"Amount must be greater than zero";
+
+#[error]
+const ENotZeroAddress: vector<u8> = b"Address cannot be zero";
+
+#[error]
+const EOnlyByMaker: vector<u8> = b"Only maker can perform this action";
+
+#[error]
+const EOnlyByOrder: vector<u8> = b"Only order module can perform this action";
+
+#[error]
+const EInsufficientStake: vector<u8> = b"Insufficient stake amount for maker registration";
+
+#[error]
+const EMakerAlreadyRegistered: vector<u8> = b"Maker is already registered in the vault";
+
+#[error]
+const EMakerNotAvailable: vector<u8> = b"Maker is not available or not registered";
+
+#[error]
+const EInsufficientCollateral: vector<u8> = b"Insufficient collateral for this operation";
+
+#[error]
+const ECollateralMustBeZero: vector<u8> = b"Collateral amount must be zero for this operation";
+
+#[error]
+const ENotZeroTotalAssetAvailable: vector<u8> = b"Total asset available must be greater than zero";
+
+#[error]
+const ESameValue: vector<u8> = b"New value is the same as current value";
+
+#[error]
+const EUnauthorized: vector<u8> = b"Unauthorized access to this function";
 
 // === Structs ===
 

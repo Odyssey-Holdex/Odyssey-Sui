@@ -14,23 +14,56 @@ use trading_vault::maker_vault::{Self, MakerOrderCap};
 
 // === Errors ===
 
-const EUnauthorized: u64 = 1;
-const EInvalidNote: u64 = 2;
-const ENoteNotFound: u64 = 3;
-const ENoteAlreadySettled: u64 = 4;
-const ENoteNotExpired: u64 = 5;
-const EInvalidSpotPrice: u64 = 6;
-const EOnlyByCoordinator: u64 = 7;
-const EInsufficientTakerBalance: u64 = 8;
-const EInsufficientMakerBalance: u64 = 9;
-const EInvalidExpiryTime: u64 = 10;
-const EInvalidPayout: u64 = 11;
-const EInvalidDirection: u64 = 12;
-const EInvalidFeePercentage: u64 = 13;
-const EInvalidSpread: u64 = 14;
-const EAssetMismatch: u64 = 15;
-const ENotSameAddress: u64 = 16;
-const EInvalidManualRefundStatus: u64 = 17;
+#[error]
+const EUnauthorized: vector<u8> = b"Unauthorized access to this function";
+
+#[error]
+const EInvalidNote: vector<u8> = b"Invalid note data provided";
+
+#[error]
+const ENoteNotFound: vector<u8> = b"Note with given ID does not exist";
+
+#[error]
+const ENoteAlreadySettled: vector<u8> = b"Note has already been settled";
+
+#[error]
+const ENoteNotExpired: vector<u8> = b"Note has not yet expired and cannot be settled";
+
+#[error]
+const EInvalidSpotPrice: vector<u8> = b"Invalid spot price provided for settlement";
+
+#[error]
+const EOnlyByCoordinator: vector<u8> = b"Only coordinator can perform this action";
+
+#[error]
+const EInsufficientTakerBalance: vector<u8> = b"Taker has insufficient balance for this note";
+
+#[error]
+const EInsufficientMakerBalance: vector<u8> = b"Maker has insufficient balance for this note";
+
+#[error]
+const EInvalidExpiryTime: vector<u8> = b"Expiry time must be in the future";
+
+#[error]
+const EInvalidPayout: vector<u8> = b"Invalid payout amount specified";
+
+#[error]
+const EInvalidDirection: vector<u8> = b"Invalid direction specified for note";
+
+#[error]
+const EInvalidFeePercentage: vector<u8> = b"Fee percentage exceeds maximum allowed";
+
+#[error]
+const EInvalidSpread: vector<u8> = b"Invalid spread value provided";
+
+#[error]
+const EAssetMismatch: vector<u8> = b"Asset type mismatch";
+
+#[error]
+const ENotSameAddress: vector<u8> = b"Address is already set to this value";
+
+#[error]
+const EInvalidManualRefundStatus: vector<u8> = b"Invalid manual refund status";
 
 // === Structs ===
 
