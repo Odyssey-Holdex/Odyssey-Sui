@@ -19,9 +19,6 @@ const ENotZeroAddress: vector<u8> = b"Address cannot be zero";
 const EOnlyByMaker: vector<u8> = b"Only maker can perform this action";
 
 #[error]
-const EOnlyByOrder: vector<u8> = b"Only order module can perform this action";
-
-#[error]
 const EInsufficientStake: vector<u8> = b"Insufficient stake amount for maker registration";
 
 #[error]

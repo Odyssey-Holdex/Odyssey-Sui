@@ -15,9 +15,6 @@ const ENotZeroAmount: vector<u8> = b"Amount must be greater than zero";
 const ENotZeroAddress: vector<u8> = b"Address cannot be zero";
 
 #[error]
-const EOnlyByOrder: vector<u8> = b"Only order module can perform this action";
-
-#[error]
 const EInsufficientBalance: vector<u8> = b"Insufficient balance for this operation";
 
 #[error]
