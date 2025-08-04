@@ -20,12 +20,6 @@ const EInsufficientBalance: vector<u8> = b"Insufficient balance for this operati
 #[error]
 const ENotZeroTotalAssetAvailable: vector<u8> = b"Total asset available must be greater than zero";
 
-#[error]
-const EUnauthorized: vector<u8> = b"Unauthorized access to this function";
-
-#[error]
-const EAssetNotAllowed: vector<u8> = b"This asset type is not allowed";
-
 // === Structs ===
 
 /// Administrative capability for vault operations
@@ -69,6 +63,12 @@ public struct Withdrawn has copy, drop {
 public struct OrderModuleSet has copy, drop {
     old_order_module: address,
     new_order_module: address,
+}
+
+/// Emitted when vault asset type is validated for migration (similar to VaultV7's AssetSet)
+public struct AssetMigrationValidated has copy, drop {
+    vault_id: ID,
+    is_empty: bool,
 }
 
 // === Public Functions ===
@@ -179,6 +179,24 @@ public fun set_order_module<T>(
     });
 }
 
+/// Validate that vault can be migrated to new asset type (admin only)
+/// Enforces the same constraint as VaultV7's setAsset: vault must be empty
+/// In Move, actual asset type change requires creating a new vault instance
+public fun validate_asset_migration<T>(
+    _: &VaultAdminCap,
+    vault: &Vault<T>,
+) {
+    // Same constraint as VaultV7: totalAssetAvailable must be 0
+    assert!(vault.total_asset_available == 0, ENotZeroTotalAssetAvailable);
+    
+    let is_empty = vault.total_asset_available == 0;
+    
+    event::emit(AssetMigrationValidated {
+        vault_id: object::id(vault),
+        is_empty,
+    });
+}
+
 // === Order Module Functions (restricted) ===
 
 /// Transfer assets to maker vault (order module only)
@@ -251,7 +269,6 @@ public fun add_funds<T>(
     vault: &mut Vault<T>,
     payment: Coin<T>,
 ) {
-    let amount = coin::value(&payment);
     let payment_balance = coin::into_balance(payment);
     balance::join(&mut vault.balance, payment_balance);
     // Note: total_asset_available is updated via adjust_taker_balance
@@ -301,6 +318,11 @@ public fun vault_balance_value<T>(vault: &Vault<T>): u64 {
 /// Get order module address
 public fun order_module<T>(vault: &Vault<T>): address {
     vault.order_module
+}
+
+/// Check if vault is empty and can be migrated (same logic as VaultV7)
+public fun can_migrate_asset<T>(vault: &Vault<T>): bool {
+    vault.total_asset_available == 0
 }
 
 // === Helper Functions ===
