@@ -41,8 +41,6 @@ public struct Vault<phantom T> has key {
     taker_balances: Table<address, u64>,
     /// The actual coin balance held by the vault
     balance: Balance<T>,
-    /// Address of the order module that can call restricted functions
-    order_module: address,
 }
 
 // === Events ===
@@ -59,11 +57,7 @@ public struct Withdrawn has copy, drop {
     amount: u64,
 }
 
-/// Emitted when order module is updated
-public struct OrderModuleSet has copy, drop {
-    old_order_module: address,
-    new_order_module: address,
-}
+
 
 /// Emitted when vault asset type is validated for migration (similar to VaultV7's AssetSet)
 public struct AssetMigrationValidated has copy, drop {
@@ -89,7 +83,6 @@ public fun initialize<T>(ctx: &mut TxContext): (VaultAdminCap, OrderCap, Vault<T
         total_asset_available: 0,
         taker_balances: table::new(ctx),
         balance: balance::zero<T>(),
-        order_module: @0x0, // Will be set later
     };
 
     (admin_cap, order_cap, vault)
@@ -163,21 +156,7 @@ public fun withdraw<T>(
     withdrawn_coin
 }
 
-/// Set the order module address (admin only)
-public fun set_order_module<T>(
-    _: &VaultAdminCap,
-    vault: &mut Vault<T>,
-    new_order_module: address,
-) {
-    assert!(new_order_module != @0x0, ENotZeroAddress);
-    let old_order_module = vault.order_module;
-    vault.order_module = new_order_module;
-
-    event::emit(OrderModuleSet {
-        old_order_module,
-        new_order_module,
-    });
-}
+// === Admin Functions ===
 
 /// Validate that vault can be migrated to new asset type (admin only)
 /// Enforces the same constraint as VaultV7's setAsset: vault must be empty
@@ -189,11 +168,9 @@ public fun validate_asset_migration<T>(
     // Same constraint as VaultV7: totalAssetAvailable must be 0
     assert!(vault.total_asset_available == 0, ENotZeroTotalAssetAvailable);
     
-    let is_empty = vault.total_asset_available == 0;
-    
     event::emit(AssetMigrationValidated {
         vault_id: object::id(vault),
-        is_empty,
+        is_empty: true,
     });
 }
 
@@ -315,10 +292,7 @@ public fun vault_balance_value<T>(vault: &Vault<T>): u64 {
     balance::value(&vault.balance)
 }
 
-/// Get order module address
-public fun order_module<T>(vault: &Vault<T>): address {
-    vault.order_module
-}
+
 
 /// Check if vault is empty and can be migrated (same logic as VaultV7)
 public fun can_migrate_asset<T>(vault: &Vault<T>): bool {
