@@ -43,10 +43,8 @@ public struct MakerOrderCap has key, store {
 }
 
 /// Main maker vault object that holds maker information and collateral
-public struct MakerVault<phantom CollateralType, phantom IthacaType> has key {
+public struct MakerVault<phantom T, phantom IthacaType> has key {
     id: UID,
-    /// Total available collateral assets in the vault
-    total_asset_available: u64,
     /// Mapping of maker address to their info
     makers: Table<address, MakerInfo>,
     /// Minimum stake amount required to become a maker
@@ -54,7 +52,7 @@ public struct MakerVault<phantom CollateralType, phantom IthacaType> has key {
     /// Custom minimum stake amounts for specific assets
     custom_min_stake_amounts: Table<TradableAsset, u64>,
     /// The actual collateral coin balance held by the vault
-    collateral_balance: Balance<CollateralType>,
+    collateral_balance: Balance<T>,
     /// The Ithaca token balance held by the vault for staking
     ithaca_balance: Balance<IthacaType>,
     /// Address of the order module that can call restricted functions
@@ -115,10 +113,10 @@ public struct OrderModuleSet has copy, drop {
 
 /// Initialize a new maker vault
 /// Returns admin capability and order capability
-public fun initialize<CollateralType, IthacaType>(
+public fun initialize<T, IthacaType>(
     minimum_stake_amount: u64,
     ctx: &mut TxContext
-): (MakerVaultAdminCap, MakerOrderCap, MakerVault<CollateralType, IthacaType>) {
+): (MakerVaultAdminCap, MakerOrderCap, MakerVault<T, IthacaType>) {
     assert!(minimum_stake_amount > 0, ENotZeroAmount);
 
     let admin_cap = MakerVaultAdminCap {
@@ -129,13 +127,12 @@ public fun initialize<CollateralType, IthacaType>(
         id: object::new(ctx),
     };
 
-    let vault = MakerVault<CollateralType, IthacaType> {
+    let vault = MakerVault<T, IthacaType> {
         id: object::new(ctx),
-        total_asset_available: 0,
         makers: table::new(ctx),
         minimum_stake_amount,
         custom_min_stake_amounts: table::new(ctx),
-        collateral_balance: balance::zero<CollateralType>(),
+        collateral_balance: balance::zero<T>(),
         ithaca_balance: balance::zero<IthacaType>(),
         order_module: @0x0, // Will be set later
     };
@@ -144,8 +141,8 @@ public fun initialize<CollateralType, IthacaType>(
 }
 
 /// Register as a maker by staking Ithaca tokens
-public fun register_maker<CollateralType, IthacaType>(
-    vault: &mut MakerVault<CollateralType, IthacaType>,
+public fun register_maker<T, IthacaType>(
+    vault: &mut MakerVault<T, IthacaType>,
     ithaca_payment: Coin<IthacaType>,
     ctx: &mut TxContext
 ) {
@@ -172,8 +169,8 @@ public fun register_maker<CollateralType, IthacaType>(
 }
 
 /// Unregister as a maker and withdraw all staked Ithaca tokens
-public fun unregister_maker<CollateralType, IthacaType>(
-    vault: &mut MakerVault<CollateralType, IthacaType>,
+public fun unregister_maker<T, IthacaType>(
+    vault: &mut MakerVault<T, IthacaType>,
     ctx: &mut TxContext
 ): Coin<IthacaType> {
     let sender = tx_context::sender(ctx);
@@ -204,10 +201,10 @@ public fun unregister_maker<CollateralType, IthacaType>(
 }
 
 /// Deposit collateral for a specific tradable asset
-public fun deposit_collateral<CollateralType, IthacaType>(
-    vault: &mut MakerVault<CollateralType, IthacaType>,
+public fun deposit_collateral<T, IthacaType>(
+    vault: &mut MakerVault<T, IthacaType>,
     tradable_asset: TradableAsset,
-    payment: Coin<CollateralType>,
+    payment: Coin<T>,
     ctx: &mut TxContext
 ) {
     let sender = tx_context::sender(ctx);
@@ -225,7 +222,6 @@ public fun deposit_collateral<CollateralType, IthacaType>(
 
     // Update collateral
     types::add_maker_collateral(maker_info, &tradable_asset, amount);
-    vault.total_asset_available = vault.total_asset_available + amount;
 
     // Add payment to vault balance
     let payment_balance = coin::into_balance(payment);
@@ -240,12 +236,12 @@ public fun deposit_collateral<CollateralType, IthacaType>(
 }
 
 /// Withdraw collateral for a specific tradable asset
-public fun withdraw_collateral<CollateralType, IthacaType>(
-    vault: &mut MakerVault<CollateralType, IthacaType>,
+public fun withdraw_collateral<T, IthacaType>(
+    vault: &mut MakerVault<T, IthacaType>,
     tradable_asset: TradableAsset,
     amount: u64,
     ctx: &mut TxContext
-): Coin<CollateralType> {
+): Coin<T> {
     let sender = tx_context::sender(ctx);
     
     assert!(amount > 0, ENotZeroAmount);
@@ -258,7 +254,6 @@ public fun withdraw_collateral<CollateralType, IthacaType>(
     
     // Update collateral
     types::subtract_maker_collateral(maker_info, &tradable_asset, amount);
-    vault.total_asset_available = vault.total_asset_available - amount;
 
     // Extract coin from vault balance
     let withdrawn_balance = balance::split(&mut vault.collateral_balance, amount);
@@ -275,8 +270,8 @@ public fun withdraw_collateral<CollateralType, IthacaType>(
 }
 
 /// Stake additional Ithaca tokens
-public fun stake_ithaca<CollateralType, IthacaType>(
-    vault: &mut MakerVault<CollateralType, IthacaType>,
+public fun stake_ithaca<T, IthacaType>(
+    vault: &mut MakerVault<T, IthacaType>,
     ithaca_payment: Coin<IthacaType>,
     ctx: &mut TxContext
 ) {
@@ -301,9 +296,9 @@ public fun stake_ithaca<CollateralType, IthacaType>(
 }
 
 /// Set the order module address (admin only)
-public fun set_order_module<CollateralType, IthacaType>(
+public fun set_order_module<T, IthacaType>(
     _: &MakerVaultAdminCap,
-    vault: &mut MakerVault<CollateralType, IthacaType>,
+    vault: &mut MakerVault<T, IthacaType>,
     new_order_module: address,
 ) {
     assert!(new_order_module != @0x0, ENotZeroAddress);
@@ -317,9 +312,9 @@ public fun set_order_module<CollateralType, IthacaType>(
 }
 
 /// Set minimum stake amount (admin only)
-public fun set_minimum_stake_amount<CollateralType, IthacaType>(
+public fun set_minimum_stake_amount<T, IthacaType>(
     _: &MakerVaultAdminCap,
-    vault: &mut MakerVault<CollateralType, IthacaType>,
+    vault: &mut MakerVault<T, IthacaType>,
     amount: u64,
 ) {
     assert!(amount > 0, ENotZeroAmount);
@@ -331,9 +326,9 @@ public fun set_minimum_stake_amount<CollateralType, IthacaType>(
 }
 
 /// Set custom minimum stake amount for specific asset (admin only)
-public fun set_custom_min_stake_amount<CollateralType, IthacaType>(
+public fun set_custom_min_stake_amount<T, IthacaType>(
     _: &MakerVaultAdminCap,
-    vault: &mut MakerVault<CollateralType, IthacaType>,
+    vault: &mut MakerVault<T, IthacaType>,
     tradable_asset: TradableAsset,
     amount: u64,
 ) {
@@ -354,20 +349,20 @@ public fun set_custom_min_stake_amount<CollateralType, IthacaType>(
 // === Order Module Functions (restricted) ===
 
 /// Transfer collateral to taker vault (order module only)
-public fun transfer_to_taker_vault<CollateralType, IthacaType>(
+public fun transfer_to_taker_vault<T, IthacaType>(
     _: &MakerOrderCap,
-    vault: &mut MakerVault<CollateralType, IthacaType>,
+    vault: &mut MakerVault<T, IthacaType>,
     amount: u64,
     ctx: &mut TxContext
-): Coin<CollateralType> {
+): Coin<T> {
     let transfer_balance = balance::split(&mut vault.collateral_balance, amount);
     coin::from_balance(transfer_balance, ctx)
 }
 
 /// Adjust maker balance (order module only)
-public fun adjust_maker_balance<CollateralType, IthacaType>(
+public fun adjust_maker_balance<T, IthacaType>(
     _: &MakerOrderCap,
-    vault: &mut MakerVault<CollateralType, IthacaType>,
+    vault: &mut MakerVault<T, IthacaType>,
     maker: address,
     tradable_asset: TradableAsset,
     amount: u64,
@@ -380,29 +375,26 @@ public fun adjust_maker_balance<CollateralType, IthacaType>(
     if (is_win) {
         // Increase maker collateral
         types::add_maker_collateral(maker_info, &tradable_asset, amount);
-        vault.total_asset_available = vault.total_asset_available + amount;
     } else {
         // Decrease maker collateral
         types::subtract_maker_collateral(maker_info, &tradable_asset, amount);
-        vault.total_asset_available = vault.total_asset_available - amount;
     }
 }
 
 /// Transfer fee to treasury (order module only)
-public fun transfer_fee_to_treasury<CollateralType, IthacaType>(
+public fun transfer_fee_to_treasury<T, IthacaType>(
     _: &MakerOrderCap,
-    vault: &mut MakerVault<CollateralType, IthacaType>,
+    vault: &mut MakerVault<T, IthacaType>,
     maker: address,
     tradable_asset: TradableAsset,
     fee: u64,
     ctx: &mut TxContext
-): Coin<CollateralType> {
+): Coin<T> {
     assert!(table::contains(&vault.makers, maker), EMakerNotAvailable);
     
     // Reduce maker collateral
     let maker_info = table::borrow_mut(&mut vault.makers, maker);
     types::subtract_maker_collateral(maker_info, &tradable_asset, fee);
-    vault.total_asset_available = vault.total_asset_available - fee;
 
     // Extract fee from vault balance
     let fee_balance = balance::split(&mut vault.collateral_balance, fee);
@@ -411,21 +403,21 @@ public fun transfer_fee_to_treasury<CollateralType, IthacaType>(
 
 /// Add funds to vault from outside (order module only)
 /// Used when funds are transferred from taker vault to maker vault
-public fun add_funds<CollateralType, IthacaType>(
+public fun add_funds<T, IthacaType>(
     _: &MakerOrderCap,
-    vault: &mut MakerVault<CollateralType, IthacaType>,
-    payment: Coin<CollateralType>,
+    vault: &mut MakerVault<T, IthacaType>,
+    payment: Coin<T>,
 ) {
     let payment_balance = coin::into_balance(payment);
     balance::join(&mut vault.collateral_balance, payment_balance);
-    // Note: total_asset_available is updated via adjust_maker_balance
+    // Note: collateral balance is automatically updated via balance::join
 }
 
 // === View Functions ===
 
 /// Get maker info
-public fun get_maker_info<CollateralType, IthacaType>(
-    vault: &MakerVault<CollateralType, IthacaType>, 
+public fun get_maker_info<T, IthacaType>(
+    vault: &MakerVault<T, IthacaType>, 
     maker: address
 ): u64 {
     if (table::contains(&vault.makers, maker)) {
@@ -437,8 +429,8 @@ public fun get_maker_info<CollateralType, IthacaType>(
 }
 
 /// Get maker collateral for specific asset
-public fun get_maker_collateral<CollateralType, IthacaType>(
-    vault: &MakerVault<CollateralType, IthacaType>, 
+public fun get_maker_collateral<T, IthacaType>(
+    vault: &MakerVault<T, IthacaType>, 
     maker: address, 
     tradable_asset: &TradableAsset
 ): u64 {
@@ -451,8 +443,8 @@ public fun get_maker_collateral<CollateralType, IthacaType>(
 }
 
 /// Get withdrawable balance for a maker considering locked amounts
-public fun get_withdrawable_balance<CollateralType, IthacaType>(
-    vault: &MakerVault<CollateralType, IthacaType>, 
+public fun get_withdrawable_balance<T, IthacaType>(
+    vault: &MakerVault<T, IthacaType>, 
     maker: address, 
     tradable_asset: &TradableAsset
 ): u64 {
@@ -462,8 +454,8 @@ public fun get_withdrawable_balance<CollateralType, IthacaType>(
 }
 
 /// Get withdrawable balance considering locked amounts in orders
-public fun get_withdrawable_balance_with_locked<CollateralType, IthacaType>(
-    vault: &MakerVault<CollateralType, IthacaType>, 
+public fun get_withdrawable_balance_with_locked<T, IthacaType>(
+    vault: &MakerVault<T, IthacaType>, 
     maker: address, 
     tradable_asset: &TradableAsset,
     locked_amount: u64
@@ -477,8 +469,8 @@ public fun get_withdrawable_balance_with_locked<CollateralType, IthacaType>(
 }
 
 /// Get minimum stake amount for a tradable asset
-public fun get_min_stake_amount<CollateralType, IthacaType>(
-    vault: &MakerVault<CollateralType, IthacaType>, 
+public fun get_min_stake_amount<T, IthacaType>(
+    vault: &MakerVault<T, IthacaType>, 
     tradable_asset: &TradableAsset
 ): u64 {
     if (table::contains(&vault.custom_min_stake_amounts, *tradable_asset)) {
@@ -489,36 +481,36 @@ public fun get_min_stake_amount<CollateralType, IthacaType>(
 }
 
 /// Get total asset available
-public fun total_asset_available<CollateralType, IthacaType>(
-    vault: &MakerVault<CollateralType, IthacaType>
+public fun total_asset_available<T, IthacaType>(
+    vault: &MakerVault<T, IthacaType>
 ): u64 {
-    vault.total_asset_available
+    balance::value(&vault.collateral_balance)
 }
 
 /// Get vault collateral balance value
-public fun vault_collateral_balance_value<CollateralType, IthacaType>(
-    vault: &MakerVault<CollateralType, IthacaType>
+public fun vault_collateral_balance_value<T, IthacaType>(
+    vault: &MakerVault<T, IthacaType>
 ): u64 {
     balance::value(&vault.collateral_balance)
 }
 
 /// Get vault Ithaca balance value
-public fun vault_ithaca_balance_value<CollateralType, IthacaType>(
-    vault: &MakerVault<CollateralType, IthacaType>
+public fun vault_ithaca_balance_value<T, IthacaType>(
+    vault: &MakerVault<T, IthacaType>
 ): u64 {
     balance::value(&vault.ithaca_balance)
 }
 
 /// Get order module address
-public fun order_module<CollateralType, IthacaType>(
-    vault: &MakerVault<CollateralType, IthacaType>
+public fun order_module<T, IthacaType>(
+    vault: &MakerVault<T, IthacaType>
 ): address {
     vault.order_module
 }
 
 /// Get minimum stake amount
-public fun minimum_stake_amount<CollateralType, IthacaType>(
-    vault: &MakerVault<CollateralType, IthacaType>
+public fun minimum_stake_amount<T, IthacaType>(
+    vault: &MakerVault<T, IthacaType>
 ): u64 {
     vault.minimum_stake_amount
 }
