@@ -110,14 +110,16 @@ public fun deposit<T>(
 
 /// Withdraw assets from the vault
 public fun withdraw<T>(
+    order_cap: &OrderCap, // Order capability to restrict access
     vault: &mut Vault<T>,
     amount: u64,
+    locked_amount: u64, // Amount locked in orders
     ctx: &mut TxContext
 ): Coin<T> {
     assert!(amount > 0, ENotZeroAmount);
     
     let sender = tx_context::sender(ctx);
-    let withdrawable_balance = get_withdrawable_balance(vault, sender);
+    let withdrawable_balance = get_withdrawable_balance_with_locked(order_cap, vault, sender, locked_amount);
     
     assert!(amount <= withdrawable_balance, EInsufficientBalance);
 
@@ -235,14 +237,9 @@ public fun total_asset_available<T>(vault: &Vault<T>): u64 {
     balance::value(&vault.balance)
 }
 
-/// Get withdrawable balance for a taker (basic version without order integration)
-/// For full integration, use get_withdrawable_balance_with_locked
-public fun get_withdrawable_balance<T>(vault: &Vault<T>, taker: address): u64 {
-    taker_balance(vault, taker)
-}
-
 /// Get withdrawable balance considering locked amounts in orders
 public fun get_withdrawable_balance_with_locked<T>(
+    _: &OrderCap, // Order capability to restrict access
     vault: &Vault<T>, 
     taker: address, 
     locked_amount: u64

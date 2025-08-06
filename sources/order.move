@@ -73,7 +73,7 @@ public struct OrderAdminCap has key, store {
 }
 
 /// Order manager that tracks all trading notes and locked balances
-public struct OrderManager<phantom CollateralType> has key {
+public struct OrderManager<phantom T> has key {
     id: UID,
     /// Counter for generating unique note IDs
     note_counter: u64,
@@ -150,20 +150,20 @@ public struct MakerFeePercentageChanged has copy, drop {
 // === Public Functions ===
 
 /// Initialize the order manager
-public fun initialize<CollateralType>(
+public fun initialize<T>(
     vault_order_cap: OrderCap,
     maker_order_cap: MakerOrderCap,
     coordinator: address,
     treasury: address,
     ctx: &mut TxContext
-): (OrderAdminCap, OrderManager<CollateralType>) {
+): (OrderAdminCap, OrderManager<T>) {
     let admin_cap = OrderAdminCap {
         id: object::new(ctx),
     };
 
     let fee_info = types::new_fee_info(0, 0); // Default 0% fees
 
-    let order_manager = OrderManager<CollateralType> {
+    let order_manager = OrderManager<T> {
         id: object::new(ctx),
         note_counter: 0,
         notes: table::new(ctx),
@@ -182,10 +182,10 @@ public fun initialize<CollateralType>(
 }
 
 /// Create a new trading note (coordinator only)
-public fun create_note<CollateralType, IthacaType>(
-    order_manager: &mut OrderManager<CollateralType>,
-    vault: &mut vault::Vault<CollateralType>,
-    maker_vault: &mut maker_vault::MakerVault<CollateralType, IthacaType>,
+public fun create_note<T, IthacaType>(
+    order_manager: &mut OrderManager<T>,
+    vault: &mut vault::Vault<T>,
+    maker_vault: &mut maker_vault::MakerVault<T, IthacaType>,
     note: Note,
     additional_info: NoteAdditionalInfo,
     clock: &Clock,
@@ -262,10 +262,10 @@ public fun create_note<CollateralType, IthacaType>(
 }
 
 /// Settle a note with the final spot price (coordinator only)
-public fun settle_note<CollateralType, IthacaType>(
-    order_manager: &mut OrderManager<CollateralType>,
-    vault: &mut vault::Vault<CollateralType>,
-    maker_vault: &mut maker_vault::MakerVault<CollateralType, IthacaType>,
+public fun settle_note<T, IthacaType>(
+    order_manager: &mut OrderManager<T>,
+    vault: &mut vault::Vault<T>,
+    maker_vault: &mut maker_vault::MakerVault<T, IthacaType>,
     note_id: u64,
     spot_price: u64,
     report: vector<u8>,
@@ -325,9 +325,9 @@ public fun settle_note<CollateralType, IthacaType>(
 }
 
 /// Change coordinator (admin only)
-public fun change_coordinator<CollateralType>(
+public fun change_coordinator<T>(
     _: &OrderAdminCap,
-    order_manager: &mut OrderManager<CollateralType>,
+    order_manager: &mut OrderManager<T>,
     new_coordinator: address,
 ) {
     assert!(new_coordinator != @0x0, EInvalidNote);
@@ -340,9 +340,9 @@ public fun change_coordinator<CollateralType>(
 }
 
 /// Set taker fee percentage (admin only)
-public fun set_taker_fee_percentage<CollateralType>(
+public fun set_taker_fee_percentage<T>(
     _: &OrderAdminCap,
-    order_manager: &mut OrderManager<CollateralType>,
+    order_manager: &mut OrderManager<T>,
     taker_fee_percentage: u64,
 ) {
     assert!(taker_fee_percentage <= types::max_fee_percentage(), EInvalidFeePercentage);
@@ -357,9 +357,9 @@ public fun set_taker_fee_percentage<CollateralType>(
 }
 
 /// Set maker fee percentage (admin only)
-public fun set_maker_fee_percentage<CollateralType>(
+public fun set_maker_fee_percentage<T>(
     _: &OrderAdminCap,
-    order_manager: &mut OrderManager<CollateralType>,
+    order_manager: &mut OrderManager<T>,
     maker_fee_percentage: u64,
 ) {
     assert!(maker_fee_percentage <= types::max_fee_percentage(), EInvalidFeePercentage);
@@ -373,10 +373,20 @@ public fun set_maker_fee_percentage<CollateralType>(
     });
 }
 
+public fun taker_withdraw<T>(
+    order_manager: &mut OrderManager<T>,
+    vault: &mut vault::Vault<T>,
+    amount: u64,
+    ctx: &mut TxContext
+): Coin<T> {
+    let locked_amount = taker_locked_balance(order_manager, tx_context::sender(ctx));
+    vault::withdraw(&order_manager.vault_order_cap, vault, amount, locked_amount, ctx)
+}
+
 // === View Functions ===
 
 /// Get taker locked balance
-public fun taker_locked_balance<CollateralType>(order_manager: &OrderManager<CollateralType>, taker: address): u64 {
+public fun taker_locked_balance<T>(order_manager: &OrderManager<T>, taker: address): u64 {
     if (table::contains(&order_manager.taker_locked_balances, taker)) {
         *table::borrow(&order_manager.taker_locked_balances, taker)
     } else {
@@ -384,9 +394,19 @@ public fun taker_locked_balance<CollateralType>(order_manager: &OrderManager<Col
     }
 }
 
+public fun taker_withdrawable_balance<T>(
+    order_manager: &OrderManager<T>,
+    vault: &vault::Vault<T>,
+    taker: address
+): u64 {
+    let locked_amount = taker_locked_balance(order_manager, taker);
+    vault::get_withdrawable_balance_with_locked(&order_manager.vault_order_cap, vault, taker, locked_amount)
+}
+
+
 /// Get maker locked balance for specific asset
-public fun maker_locked_balance<CollateralType>(
-    order_manager: &OrderManager<CollateralType>, 
+public fun maker_locked_balance<T>(
+    order_manager: &OrderManager<T>, 
     maker: address, 
     asset: TradableAsset
 ): u64 {
@@ -399,14 +419,14 @@ public fun maker_locked_balance<CollateralType>(
 }
 
 /// Get note by ID
-public fun get_note<CollateralType>(order_manager: &OrderManager<CollateralType>, note_id: u64): &Note {
+public fun get_note<T>(order_manager: &OrderManager<T>, note_id: u64): &Note {
     assert!(table::contains(&order_manager.notes, note_id), ENoteNotFound);
     let stored_note = table::borrow(&order_manager.notes, note_id);
     &stored_note.note
 }
 
 /// Check if note is settled
-public fun is_note_settled<CollateralType>(order_manager: &OrderManager<CollateralType>, note_id: u64): bool {
+public fun is_note_settled<T>(order_manager: &OrderManager<T>, note_id: u64): bool {
     if (table::contains(&order_manager.is_note_settled, note_id)) {
         *table::borrow(&order_manager.is_note_settled, note_id)
     } else {
@@ -415,25 +435,25 @@ public fun is_note_settled<CollateralType>(order_manager: &OrderManager<Collater
 }
 
 /// Get note counter
-public fun note_counter<CollateralType>(order_manager: &OrderManager<CollateralType>): u64 {
+public fun note_counter<T>(order_manager: &OrderManager<T>): u64 {
     order_manager.note_counter
 }
 
 /// Get coordinator
-public fun coordinator<CollateralType>(order_manager: &OrderManager<CollateralType>): address {
+public fun coordinator<T>(order_manager: &OrderManager<T>): address {
     order_manager.coordinator
 }
 
 /// Get treasury
-public fun treasury<CollateralType>(order_manager: &OrderManager<CollateralType>): address {
+public fun treasury<T>(order_manager: &OrderManager<T>): address {
     order_manager.treasury
 }
 
 // === Helper Functions ===
 
 /// Update taker locked balance
-fun update_taker_locked_balance<CollateralType>(
-    order_manager: &mut OrderManager<CollateralType>,
+fun update_taker_locked_balance<T>(
+    order_manager: &mut OrderManager<T>,
     taker: address,
     amount: u64,
     is_lock: bool,
@@ -456,8 +476,8 @@ fun update_taker_locked_balance<CollateralType>(
 }
 
 /// Update maker locked balance
-fun update_maker_locked_balance<CollateralType>(
-    order_manager: &mut OrderManager<CollateralType>,
+fun update_maker_locked_balance<T>(
+    order_manager: &mut OrderManager<T>,
     maker: address,
     asset: TradableAsset,
     amount: u64,
@@ -541,10 +561,10 @@ fun determine_settlement_outcome(
 }
 
 /// Process the settlement by transferring funds and fees
-fun process_settlement<CollateralType, IthacaType>(
-    order_manager: &mut OrderManager<CollateralType>,
-    vault: &mut vault::Vault<CollateralType>,
-    maker_vault: &mut maker_vault::MakerVault<CollateralType, IthacaType>,
+fun process_settlement<T, IthacaType>(
+    order_manager: &mut OrderManager<T>,
+    vault: &mut vault::Vault<T>,
+    maker_vault: &mut maker_vault::MakerVault<T, IthacaType>,
     note: &Note,
     status: NoteStatus,
     payout: u64,
