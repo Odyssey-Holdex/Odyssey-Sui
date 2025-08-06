@@ -293,7 +293,6 @@ public fun set_minimum_stake_amount<T, IthacaType>(
     vault: &mut MakerVault<T, IthacaType>,
     amount: u64,
 ) {
-    assert!(amount > 0, ENotZeroAmount);
     vault.minimum_stake_amount = amount;
 
     event::emit(MinimumStakeAmountSet {
@@ -312,9 +311,7 @@ public fun set_custom_min_stake_amount<T, IthacaType>(
         table::remove(&mut vault.custom_min_stake_amounts, tradable_asset);
     };
     
-    if (amount > 0) {
-        table::add(&mut vault.custom_min_stake_amounts, tradable_asset, amount);
-    };
+    table::add(&mut vault.custom_min_stake_amounts, tradable_asset, amount);
 
     event::emit(CustomMinStakeAmountSet {
         tradable_asset,
