@@ -383,6 +383,18 @@ public fun taker_withdraw<T>(
     vault::withdraw(&order_manager.vault_order_cap, vault, amount, locked_amount, ctx)
 }
 
+public fun maker_withdraw<T, IthacaType>(
+    order_manager: &mut OrderManager<T>,
+    maker_vault: &mut maker_vault::MakerVault<T, IthacaType>,
+    tradable_asset: TradableAsset,
+    amount: u64,
+    ctx: &mut TxContext
+): Coin<T> {
+    let sender = tx_context::sender(ctx);
+    let locked_amount = maker_locked_balance(order_manager, sender, tradable_asset);
+    maker_vault::withdraw_collateral(&order_manager.maker_order_cap, maker_vault, sender, tradable_asset, locked_amount, amount, ctx)
+}
+
 // === View Functions ===
 
 /// Get taker locked balance
@@ -403,6 +415,15 @@ public fun taker_withdrawable_balance<T>(
     vault::get_withdrawable_balance_with_locked(&order_manager.vault_order_cap, vault, taker, locked_amount)
 }
 
+public fun maker_withdrawable_balance<T, IthacaType>(
+    order_manager: &OrderManager<T>,
+    maker_vault: &maker_vault::MakerVault<T, IthacaType>,
+    maker: address,
+    tradable_asset: TradableAsset
+): u64 {
+    let locked_amount = maker_locked_balance(order_manager, maker, tradable_asset);
+    maker_vault::get_withdrawable_balance_with_locked(&order_manager.maker_order_cap, maker_vault, maker, &tradable_asset, locked_amount)
+}
 
 /// Get maker locked balance for specific asset
 public fun maker_locked_balance<T>(

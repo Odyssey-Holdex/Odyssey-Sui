@@ -82,6 +82,17 @@ public fun example_deposit_collateral<T, IthacaType>(
     maker_vault::deposit_collateral(maker_vault, asset, payment, ctx);
 }
 
+/// Example maker withdrawal with locked balance check
+public fun example_maker_withdraw<T, IthacaType>(
+    order_manager: &mut OrderManager<T>,
+    maker_vault: &mut MakerVault<T, IthacaType>,
+    tradable_asset: TradableAsset,
+    amount: u64,
+    ctx: &mut TxContext
+): Coin<T> {
+    order::maker_withdraw(order_manager, maker_vault, tradable_asset, amount, ctx)
+}
+
 /// Example note creation (coordinator only)
 public fun example_create_note<T, IthacaType>(
     order_manager: &mut OrderManager<T>,
@@ -159,6 +170,15 @@ public fun check_withdrawable_balance<T>(
     taker: address
 ): u64 {
     order::taker_withdrawable_balance(order_manager, vault, taker)
+}
+
+public fun check_maker_withdrawable_balance<T, IthacaType>(
+    order_manager: &OrderManager<T>,
+    maker_vault: &MakerVault<T, IthacaType>,
+    maker: address,
+    tradable_asset: TradableAsset
+): u64 {
+    order::maker_withdrawable_balance(order_manager, maker_vault, maker, tradable_asset)
 }
 
 public fun check_maker_collateral<T, IthacaType>(

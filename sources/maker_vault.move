@@ -223,22 +223,24 @@ public fun deposit_collateral<T, IthacaType>(
     });
 }
 
-/// Withdraw collateral for a specific tradable asset
+/// Withdraw collateral for a specific tradable asset (order module only)
+/// This considers locked amounts in orders for security
 public fun withdraw_collateral<T, IthacaType>(
+    order_cap: &MakerOrderCap,
     vault: &mut MakerVault<T, IthacaType>,
+    maker: address,
     tradable_asset: TradableAsset,
+    locked_amount: u64,
     amount: u64,
     ctx: &mut TxContext
 ): Coin<T> {
-    let sender = tx_context::sender(ctx);
-    
     assert!(amount > 0, ENotZeroAmount);
-    assert!(table::contains(&vault.makers, sender), EMakerNotAvailable);
+    assert!(table::contains(&vault.makers, maker), EMakerNotAvailable);
 
-    let withdrawable_balance = get_withdrawable_balance(vault, sender, &tradable_asset);
+    let withdrawable_balance = get_withdrawable_balance_with_locked(order_cap, vault, maker, &tradable_asset, locked_amount);
     assert!(amount <= withdrawable_balance, EInsufficientCollateral);
 
-    let maker_info = table::borrow_mut(&mut vault.makers, sender);
+    let maker_info = table::borrow_mut(&mut vault.makers, maker);
     
     // Update collateral
     types::subtract_maker_collateral(maker_info, &tradable_asset, amount);
@@ -249,7 +251,7 @@ public fun withdraw_collateral<T, IthacaType>(
 
     // Emit event
     event::emit(CollateralWithdrawn {
-        maker: sender,
+        maker,
         tradable_asset,
         amount,
     });
@@ -282,6 +284,8 @@ public fun stake_ithaca<T, IthacaType>(
         amount,
     });
 }
+
+// === Admin Functions ===
 
 /// Set minimum stake amount (admin only)
 public fun set_minimum_stake_amount<T, IthacaType>(
@@ -414,19 +418,10 @@ public fun get_maker_collateral<T, IthacaType>(
     }
 }
 
-/// Get withdrawable balance for a maker considering locked amounts
-public fun get_withdrawable_balance<T, IthacaType>(
-    vault: &MakerVault<T, IthacaType>, 
-    maker: address, 
-    tradable_asset: &TradableAsset
-): u64 {
-    // For now, return the full collateral
-    // In full implementation, this would subtract locked amounts from orders
-    get_maker_collateral(vault, maker, tradable_asset)
-}
 
 /// Get withdrawable balance considering locked amounts in orders
 public fun get_withdrawable_balance_with_locked<T, IthacaType>(
+    _: &MakerOrderCap,
     vault: &MakerVault<T, IthacaType>, 
     maker: address, 
     tradable_asset: &TradableAsset,
