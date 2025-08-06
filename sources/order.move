@@ -24,9 +24,6 @@ const ENoteAlreadySettled: vector<u8> = b"Note has already been settled";
 const ENoteNotExpired: vector<u8> = b"Note has not yet expired and cannot be settled";
 
 #[error]
-const EOnlyByCoordinator: vector<u8> = b"Only coordinator can perform this action";
-
-#[error]
 const EInsufficientTakerBalance: vector<u8> = b"Taker has insufficient balance for this note";
 
 #[error]
@@ -44,13 +41,15 @@ const EInvalidFeePercentage: vector<u8> = b"Fee percentage exceeds maximum allow
 #[error]
 const EInvalidSpread: vector<u8> = b"Invalid spread value provided";
 
-#[error]
-const ENotSameAddress: vector<u8> = b"Address is already set to this value";
-
 // === Structs ===
 
 /// Administrative capability for order operations
 public struct OrderAdminCap has key, store {
+    id: UID,
+}
+
+/// Coordinator capability for creating and settling notes
+public struct CoordinatorCap has key, store {
     id: UID,
 }
 
@@ -73,8 +72,6 @@ public struct OrderManager<phantom T> has key {
     vault_order_cap: OrderCap,
     /// Maker order capability for interacting with maker vault
     maker_order_cap: MakerOrderCap,
-    /// Coordinator address
-    coordinator: address,
     /// Treasury address
     treasury: address,
     /// Fee information
@@ -115,11 +112,6 @@ public struct NoteSettled has copy, drop {
     fee: u64,
 }
 
-/// Emitted when coordinator is changed
-public struct CoordinatorChanged has copy, drop {
-    new_coordinator: address,
-}
-
 /// Emitted when fee percentages are changed
 public struct TakerFeePercentageChanged has copy, drop {
     taker_fee_percentage: u64,
@@ -135,11 +127,14 @@ public struct MakerFeePercentageChanged has copy, drop {
 public fun initialize<T>(
     vault_order_cap: OrderCap,
     maker_order_cap: MakerOrderCap,
-    coordinator: address,
     treasury: address,
     ctx: &mut TxContext
-): (OrderAdminCap, OrderManager<T>) {
+): (OrderAdminCap, CoordinatorCap, OrderManager<T>) {
     let admin_cap = OrderAdminCap {
+        id: object::new(ctx),
+    };
+
+    let coordinator_cap = CoordinatorCap {
         id: object::new(ctx),
     };
 
@@ -155,29 +150,24 @@ public fun initialize<T>(
         is_note_settled: table::new(ctx),
         vault_order_cap,
         maker_order_cap,
-        coordinator,
         treasury,
         fee_info,
     };
 
-    (admin_cap, order_manager)
+    (admin_cap, coordinator_cap, order_manager)
 }
 
 /// Create a new trading note (coordinator only)
 public fun create_note<T, IthacaType>(
+    _: &CoordinatorCap,
     order_manager: &mut OrderManager<T>,
     vault: &mut vault::Vault<T>,
     maker_vault: &mut maker_vault::MakerVault<T, IthacaType>,
     note: Note,
     additional_info: NoteAdditionalInfo,
     clock: &Clock,
-    ctx: &mut TxContext
+    _: &mut TxContext
 ): u64 {
-    let sender = tx_context::sender(ctx);
-    
-    // Only coordinator can create notes
-    assert!(sender == order_manager.coordinator, EOnlyByCoordinator);
-    
     // Validate note data
     let amount = types::note_amount(&note);
     let win_payout = types::note_win_payout(&note);
@@ -245,6 +235,7 @@ public fun create_note<T, IthacaType>(
 
 /// Settle a note with the final spot price (coordinator only)
 public fun settle_note<T, IthacaType>(
+    _: &CoordinatorCap,
     order_manager: &mut OrderManager<T>,
     vault: &mut vault::Vault<T>,
     maker_vault: &mut maker_vault::MakerVault<T, IthacaType>,
@@ -254,8 +245,6 @@ public fun settle_note<T, IthacaType>(
     clock: &Clock,
     ctx: &mut TxContext
 ) {
-    let sender = tx_context::sender(ctx);
-    assert!(sender == order_manager.coordinator, EOnlyByCoordinator);
     assert!(table::contains(&order_manager.notes, note_id), ENoteNotFound);
     
     let is_settled = *table::borrow(&order_manager.is_note_settled, note_id);
@@ -303,21 +292,6 @@ public fun settle_note<T, IthacaType>(
         settlement_price: spot_price,
         payout,
         fee,
-    });
-}
-
-/// Change coordinator (admin only)
-public fun change_coordinator<T>(
-    _: &OrderAdminCap,
-    order_manager: &mut OrderManager<T>,
-    new_coordinator: address,
-) {
-    assert!(new_coordinator != @0x0, EInvalidNote);
-    assert!(new_coordinator != order_manager.coordinator, ENotSameAddress);
-    order_manager.coordinator = new_coordinator;
-
-    event::emit(CoordinatorChanged {
-        new_coordinator,
     });
 }
 
@@ -440,11 +414,6 @@ public fun is_note_settled<T>(order_manager: &OrderManager<T>, note_id: u64): bo
 /// Get note counter
 public fun note_counter<T>(order_manager: &OrderManager<T>): u64 {
     order_manager.note_counter
-}
-
-/// Get coordinator
-public fun coordinator<T>(order_manager: &OrderManager<T>): address {
-    order_manager.coordinator
 }
 
 /// Get treasury
