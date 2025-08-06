@@ -16,9 +16,6 @@ const ENotZeroAmount: vector<u8> = b"Amount must be greater than zero";
 const ENotZeroAddress: vector<u8> = b"Address cannot be zero";
 
 #[error]
-const EOnlyByMaker: vector<u8> = b"Only maker can perform this action";
-
-#[error]
 const EInsufficientStake: vector<u8> = b"Insufficient stake amount for maker registration";
 
 #[error]
@@ -32,15 +29,6 @@ const EInsufficientCollateral: vector<u8> = b"Insufficient collateral for this o
 
 #[error]
 const ECollateralMustBeZero: vector<u8> = b"Collateral amount must be zero for this operation";
-
-#[error]
-const ENotZeroTotalAssetAvailable: vector<u8> = b"Total asset available must be greater than zero";
-
-#[error]
-const ESameValue: vector<u8> = b"New value is the same as current value";
-
-#[error]
-const EUnauthorized: vector<u8> = b"Unauthorized access to this function";
 
 // === Structs ===
 
