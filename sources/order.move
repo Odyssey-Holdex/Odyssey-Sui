@@ -1,21 +1,15 @@
 /// Order module for managing trading notes, orders, and settlements
 module trading_vault::order;
 
-use sui::object::{Self, UID, ID};
-use sui::transfer;
-use sui::tx_context::{Self, TxContext};
 use sui::table::{Self, Table};
 use sui::event;
 use sui::clock::{Self, Clock};
-use sui::coin::{Self, Coin};
+use sui::coin::{Coin};
 use trading_vault::types::{Self, Note, NoteAdditionalInfo, NoteStatus, TradableAsset, Actor, SettlementInfo, FeeInfo};
 use trading_vault::vault::{Self, OrderCap};
 use trading_vault::maker_vault::{Self, MakerOrderCap};
 
 // === Errors ===
-
-#[error]
-const EUnauthorized: vector<u8> = b"Unauthorized access to this function";
 
 #[error]
 const EInvalidNote: vector<u8> = b"Invalid note data provided";
@@ -28,9 +22,6 @@ const ENoteAlreadySettled: vector<u8> = b"Note has already been settled";
 
 #[error]
 const ENoteNotExpired: vector<u8> = b"Note has not yet expired and cannot be settled";
-
-#[error]
-const EInvalidSpotPrice: vector<u8> = b"Invalid spot price provided for settlement";
 
 #[error]
 const EOnlyByCoordinator: vector<u8> = b"Only coordinator can perform this action";
@@ -48,22 +39,13 @@ const EInvalidExpiryTime: vector<u8> = b"Expiry time must be in the future";
 const EInvalidPayout: vector<u8> = b"Invalid payout amount specified";
 
 #[error]
-const EInvalidDirection: vector<u8> = b"Invalid direction specified for note";
-
-#[error]
 const EInvalidFeePercentage: vector<u8> = b"Fee percentage exceeds maximum allowed";
 
 #[error]
 const EInvalidSpread: vector<u8> = b"Invalid spread value provided";
 
 #[error]
-const EAssetMismatch: vector<u8> = b"Asset type mismatch";
-
-#[error]
 const ENotSameAddress: vector<u8> = b"Address is already set to this value";
-
-#[error]
-const EInvalidManualRefundStatus: vector<u8> = b"Invalid manual refund status";
 
 // === Structs ===
 

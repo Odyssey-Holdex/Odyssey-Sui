@@ -2,7 +2,6 @@
 module trading_vault::types;
 
 use std::string::String;
-use std::option::Option;
 
 /// Direction for trading orders
 public enum Direction has copy, drop, store {

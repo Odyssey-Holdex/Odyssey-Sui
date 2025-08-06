@@ -2,11 +2,8 @@
 /// This shows how to initialize vaults, create orders, and manage deposits/withdrawals
 module trading_vault::example;
 
-use sui::coin::{Self, Coin};
-use sui::sui::SUI;
-use sui::tx_context::{Self, TxContext};
+use sui::coin::{Coin};
 use sui::clock::Clock;
-use std::vector;
 use trading_vault::vault::{Self, Vault, VaultAdminCap};
 use trading_vault::maker_vault::{Self, MakerVault, MakerVaultAdminCap};
 use trading_vault::order::{Self, OrderManager, OrderAdminCap};
