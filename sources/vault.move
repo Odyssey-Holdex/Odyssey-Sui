@@ -17,9 +17,6 @@ const ENotZeroAddress: vector<u8> = b"Address cannot be zero";
 #[error]
 const EInsufficientBalance: vector<u8> = b"Insufficient balance for this operation";
 
-#[error]
-const ENotZeroTotalAssetAvailable: vector<u8> = b"Total asset available must be greater than zero";
-
 // === Structs ===
 
 /// Administrative capability for vault operations
@@ -59,11 +56,7 @@ public struct Withdrawn has copy, drop {
 
 
 
-/// Emitted when vault asset type is validated for migration (similar to VaultV7's AssetSet)
-public struct AssetMigrationValidated has copy, drop {
-    vault_id: ID,
-    is_empty: bool,
-}
+
 
 // === Public Functions ===
 
@@ -157,22 +150,7 @@ public fun withdraw<T>(
 }
 
 // === Admin Functions ===
-
-/// Validate that vault can be migrated to new asset type (admin only)
-/// Enforces the same constraint as VaultV7's setAsset: vault must be empty
-/// In Move, actual asset type change requires creating a new vault instance
-public fun validate_asset_migration<T>(
-    _: &VaultAdminCap,
-    vault: &Vault<T>,
-) {
-    // Same constraint as VaultV7: totalAssetAvailable must be 0
-    assert!(vault.total_asset_available == 0, ENotZeroTotalAssetAvailable);
-    
-    event::emit(AssetMigrationValidated {
-        vault_id: object::id(vault),
-        is_empty: true,
-    });
-}
+// Note: Asset type changes not supported in Move - types are immutable after creation
 
 // === Order Module Functions (restricted) ===
 
