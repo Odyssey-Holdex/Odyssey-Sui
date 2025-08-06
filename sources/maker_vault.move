@@ -13,9 +13,6 @@ use trading_vault::types::{Self, TradableAsset, MakerInfo};
 const ENotZeroAmount: vector<u8> = b"Amount must be greater than zero";
 
 #[error]
-const ENotZeroAddress: vector<u8> = b"Address cannot be zero";
-
-#[error]
 const EInsufficientStake: vector<u8> = b"Insufficient stake amount for maker registration";
 
 #[error]
@@ -55,8 +52,6 @@ public struct MakerVault<phantom T, phantom IthacaType> has key {
     collateral_balance: Balance<T>,
     /// The Ithaca token balance held by the vault for staking
     ithaca_balance: Balance<IthacaType>,
-    /// Address of the order module that can call restricted functions
-    order_module: address,
 }
 
 // === Events ===
@@ -103,12 +98,6 @@ public struct CustomMinStakeAmountSet has copy, drop {
     amount: u64,
 }
 
-/// Emitted when order module is updated
-public struct OrderModuleSet has copy, drop {
-    old_order_module: address,
-    new_order_module: address,
-}
-
 // === Public Functions ===
 
 /// Initialize a new maker vault
@@ -134,7 +123,6 @@ public fun initialize<T, IthacaType>(
         custom_min_stake_amounts: table::new(ctx),
         collateral_balance: balance::zero<T>(),
         ithaca_balance: balance::zero<IthacaType>(),
-        order_module: @0x0, // Will be set later
     };
 
     (admin_cap, order_cap, vault)
@@ -292,22 +280,6 @@ public fun stake_ithaca<T, IthacaType>(
     event::emit(IthacaStaked {
         maker: sender,
         amount,
-    });
-}
-
-/// Set the order module address (admin only)
-public fun set_order_module<T, IthacaType>(
-    _: &MakerVaultAdminCap,
-    vault: &mut MakerVault<T, IthacaType>,
-    new_order_module: address,
-) {
-    assert!(new_order_module != @0x0, ENotZeroAddress);
-    let old_order_module = vault.order_module;
-    vault.order_module = new_order_module;
-
-    event::emit(OrderModuleSet {
-        old_order_module,
-        new_order_module,
     });
 }
 
@@ -499,13 +471,6 @@ public fun vault_ithaca_balance_value<T, IthacaType>(
     vault: &MakerVault<T, IthacaType>
 ): u64 {
     balance::value(&vault.ithaca_balance)
-}
-
-/// Get order module address
-public fun order_module<T, IthacaType>(
-    vault: &MakerVault<T, IthacaType>
-): address {
-    vault.order_module
 }
 
 /// Get minimum stake amount
