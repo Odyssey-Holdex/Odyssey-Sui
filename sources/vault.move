@@ -255,11 +255,6 @@ public fun get_withdrawable_balance_with_locked<T>(
     }
 }
 
-/// Get vault balance value
-public fun vault_balance_value<T>(vault: &Vault<T>): u64 {
-    balance::value(&vault.balance)
-}
-
 
 // === Helper Functions ===
 
