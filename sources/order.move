@@ -340,8 +340,9 @@ public fun taker_withdraw<T>(
     amount: u64,
     ctx: &mut TxContext
 ): Coin<T> {
-    let locked_amount = taker_locked_balance(order_manager, tx_context::sender(ctx));
-    vault::withdraw(&order_manager.vault_order_cap, vault, amount, locked_amount, ctx)
+    let sender = tx_context::sender(ctx);
+    let locked_amount = taker_locked_balance(order_manager, sender);
+    vault::withdraw(&order_manager.vault_order_cap, vault, sender, amount, locked_amount, ctx)
 }
 
 public fun maker_withdraw<T, IthacaType>(
