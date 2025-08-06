@@ -1,0 +1,249 @@
+#[test_only]
+module trading_vault::test_utils;
+
+use sui::test_scenario::{Self, Scenario, ctx};
+use sui::clock::{Self, Clock};
+use sui::coin::{Self, Coin};
+use sui::test_utils;
+use trading_vault::types::{Self, Note, TradableAsset, Direction};
+use trading_vault::vault::{Self, Vault, VaultAdminCap, OrderCap};
+use trading_vault::maker_vault::{Self, MakerVault, MakerVaultAdminCap, MakerOrderCap};
+use trading_vault::order::{Self, OrderManager, OrderAdminCap, CoordinatorCap};
+
+// Test token types
+public struct USDC has drop {}
+public struct ITHACA has drop {}
+
+// Constants for testing
+const DAY_MS: u64 = 24 * 60 * 60 * 1000;
+const HOUR_MS: u64 = 60 * 60 * 1000;
+const MINIMUM_STAKE: u64 = 200_000_000; // 200 ITHACA (with 6 decimals)
+
+// Test addresses
+const GOVERNOR: address = @0xa11ce;
+const TRADER_1: address = @0xb0b;
+const TRADER_2: address = @0xc0c;
+const MAKER_1: address = @0xd1d;
+const MAKER_2: address = @0xe2e;
+const TREASURY: address = @0xfee;
+const COORDINATOR: address = @0xc00;
+
+/// Setup basic test scenario with multiple actors
+public fun setup_test_scenario(): Scenario {
+    let scenario = test_scenario::begin(GOVERNOR);
+    scenario
+}
+
+/// Create and mint test coins for an address
+public fun mint_usdc(scenario: &mut Scenario, recipient: address, amount: u64): Coin<USDC> {
+    test_scenario::next_tx(scenario, GOVERNOR);
+    let coin = coin::mint_for_testing<USDC>(amount, ctx(scenario));
+    test_scenario::next_tx(scenario, recipient);
+    coin
+}
+
+public fun mint_ithaca(scenario: &mut Scenario, recipient: address, amount: u64): Coin<ITHACA> {
+    test_scenario::next_tx(scenario, GOVERNOR);
+    let coin = coin::mint_for_testing<ITHACA>(amount, ctx(scenario));
+    test_scenario::next_tx(scenario, recipient);
+    coin
+}
+
+/// Initialize vault system
+public fun setup_vault(scenario: &mut Scenario): (VaultAdminCap, OrderCap, Vault<USDC>) {
+    test_scenario::next_tx(scenario, GOVERNOR);
+    vault::initialize<USDC>(ctx(scenario))
+}
+
+/// Initialize maker vault system
+public fun setup_maker_vault(scenario: &mut Scenario): (MakerVaultAdminCap, MakerOrderCap, MakerVault<USDC, ITHACA>) {
+    test_scenario::next_tx(scenario, GOVERNOR);
+    maker_vault::initialize<USDC, ITHACA>(MINIMUM_STAKE, ctx(scenario))
+}
+
+/// Initialize order manager
+public fun setup_order_manager(
+    scenario: &mut Scenario,
+    vault_order_cap: OrderCap,
+    maker_order_cap: MakerOrderCap
+): (OrderAdminCap, CoordinatorCap, OrderManager<USDC>) {
+    test_scenario::next_tx(scenario, GOVERNOR);
+    order::initialize<USDC>(vault_order_cap, maker_order_cap, TREASURY, ctx(scenario))
+}
+
+/// Complete system setup
+public fun setup_complete_system(scenario: &mut Scenario): (
+    VaultAdminCap,
+    OrderAdminCap, 
+    CoordinatorCap,
+    MakerVaultAdminCap,
+    Vault<USDC>,
+    MakerVault<USDC, ITHACA>,
+    OrderManager<USDC>
+) {
+    let (vault_admin_cap, vault_order_cap, vault) = setup_vault(scenario);
+    let (maker_vault_admin_cap, maker_order_cap, maker_vault) = setup_maker_vault(scenario);
+    let (order_admin_cap, coordinator_cap, order_manager) = setup_order_manager(
+        scenario, 
+        vault_order_cap, 
+        maker_order_cap
+    );
+    
+    (vault_admin_cap, order_admin_cap, coordinator_cap, maker_vault_admin_cap, 
+     vault, maker_vault, order_manager)
+}
+
+/// Create a test clock with current timestamp
+public fun create_test_clock(scenario: &mut Scenario, timestamp_ms: u64): Clock {
+    test_scenario::next_tx(scenario, GOVERNOR);
+    clock::create_for_testing(ctx(scenario))
+}
+
+/// Register a maker in the maker vault
+public fun register_test_maker(
+    scenario: &mut Scenario,
+    maker_vault: &mut MakerVault<USDC, ITHACA>,
+    maker: address,
+    stake_amount: u64
+) {
+    test_scenario::next_tx(scenario, maker);
+    let ithaca_coin = mint_ithaca(scenario, maker, stake_amount);
+    maker_vault::register_maker(maker_vault, ithaca_coin, ctx(scenario));
+}
+
+/// Deposit collateral for a maker
+public fun deposit_maker_collateral(
+    scenario: &mut Scenario,
+    maker_vault: &mut MakerVault<USDC, ITHACA>,
+    maker: address,
+    asset: TradableAsset,
+    amount: u64
+) {
+    test_scenario::next_tx(scenario, maker);
+    let usdc_coin = mint_usdc(scenario, maker, amount);
+    maker_vault::deposit_collateral(maker_vault, asset, usdc_coin, ctx(scenario));
+}
+
+/// Deposit funds for a trader
+public fun deposit_trader_funds(
+    scenario: &mut Scenario,
+    vault: &mut Vault<USDC>,
+    trader: address,
+    amount: u64
+) {
+    test_scenario::next_tx(scenario, trader);
+    let usdc_coin = mint_usdc(scenario, trader, amount);
+    vault::deposit(vault, usdc_coin, ctx(scenario));
+}
+
+/// Create a test note with default values
+public fun create_test_note(
+    taker: address,
+    maker: address,
+    amount: u64,
+    win_payout: u64,
+    expiry_time: u64
+): Note {
+    types::new_note(
+        taker,                               // taker
+        maker,                               // maker  
+        types::tradable_asset_btc(),        // asset (BTC)
+        types::direction_up(),              // direction (UP)
+        amount,                             // amount
+        84000,                              // starting_price (84k USD, scaled)
+        15,                                 // spread (15 USD)
+        win_payout,                         // win_payout
+        expiry_time,                        // expiry_time
+        0,                                  // nonce
+        amount,                             // refund_payout (full refund)
+        10,                                 // almost_win_spread (10 USD)
+        amount + (win_payout - amount) / 2, // almost_win_payout (halfway)
+        expiry_time - DAY_MS               // start_time (1 day before expiry)
+    )
+}
+
+/// Create a test note with custom parameters
+public fun create_custom_note(
+    taker: address,
+    maker: address,
+    asset: TradableAsset,
+    direction: Direction,
+    amount: u64,
+    starting_price: u64,
+    spread: u64,
+    win_payout: u64,
+    expiry_time: u64,
+    refund_payout: u64,
+    almost_win_spread: u64,
+    almost_win_payout: u64
+): Note {
+    types::new_note(
+        taker,
+        maker,
+        asset,
+        direction,
+        amount,
+        starting_price,
+        spread,
+        win_payout,
+        expiry_time,
+        0, // nonce
+        refund_payout,
+        almost_win_spread,
+        almost_win_payout,
+        expiry_time - DAY_MS // start_time
+    )
+}
+
+/// Setup a complete trading scenario with funded accounts
+public fun setup_funded_scenario(scenario: &mut Scenario): (
+    VaultAdminCap,
+    OrderAdminCap,
+    CoordinatorCap, 
+    MakerVaultAdminCap,
+    Vault<USDC>,
+    MakerVault<USDC, ITHACA>,
+    OrderManager<USDC>,
+    Clock
+) {
+    let (vault_admin_cap, order_admin_cap, coordinator_cap, maker_vault_admin_cap,
+         vault, maker_vault, order_manager) = setup_complete_system(scenario);
+    
+    let clock = create_test_clock(scenario, 1000000000); // Arbitrary timestamp
+    
+    // Register and fund maker
+    register_test_maker(scenario, &mut maker_vault, MAKER_1, MINIMUM_STAKE);
+    deposit_maker_collateral(scenario, &mut maker_vault, MAKER_1, types::tradable_asset_btc(), 10_000_000); // 10 USDC
+    
+    // Fund traders
+    deposit_trader_funds(scenario, &mut vault, TRADER_1, 5_000_000); // 5 USDC  
+    deposit_trader_funds(scenario, &mut vault, TRADER_2, 3_000_000); // 3 USDC
+    
+    (vault_admin_cap, order_admin_cap, coordinator_cap, maker_vault_admin_cap,
+     vault, maker_vault, order_manager, clock)
+}
+
+/// Advance clock time
+public fun advance_time(clock: &mut Clock, ms: u64) {
+    clock::increment_for_testing(clock, ms);
+}
+
+/// Get test addresses for easy access
+public fun get_test_addresses(): (address, address, address, address, address, address, address) {
+    (GOVERNOR, TRADER_1, TRADER_2, MAKER_1, MAKER_2, TREASURY, COORDINATOR)
+}
+
+/// Helper to get current timestamp plus days
+public fun timestamp_plus_days(clock: &Clock, days: u64): u64 {
+    clock::timestamp_ms(clock) + (days * DAY_MS)
+}
+
+/// Helper to get current timestamp plus hours  
+public fun timestamp_plus_hours(clock: &Clock, hours: u64): u64 {
+    clock::timestamp_ms(clock) + (hours * HOUR_MS)
+}
+
+/// Cleanup test scenario
+public fun cleanup_scenario(scenario: Scenario) {
+    test_scenario::end(scenario);
+} 
