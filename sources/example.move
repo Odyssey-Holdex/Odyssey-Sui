@@ -102,7 +102,7 @@ public fun example_create_note<T, IthacaType>(
     clock: &Clock,
     ctx: &mut TxContext
 ): u64 {
-    // Create note
+    // Create note with all fields including additional info
     let note = types::new_note(
         taker,
         maker,
@@ -115,17 +115,12 @@ public fun example_create_note<T, IthacaType>(
         sui::clock::timestamp_ms(clock) + 1000000, // expiry_time: future timestamp
         1, // nonce
         amount, // refund_payout: return original amount
-    );
-
-    // Create additional info
-    let additional_info = types::new_note_additional_info(
         500, // almost_win_spread: $5
         amount + (amount / 2), // almost_win_payout: 1.5x
         sui::clock::timestamp_ms(clock), // start_time
-        vector::empty<u8>(), // empty report
     );
 
-    order::create_note(coordinator_cap, order_manager, vault, maker_vault, note, additional_info, clock, ctx)
+    order::create_note(coordinator_cap, order_manager, vault, maker_vault, note, clock, ctx)
 }
 
 /// Example note settlement (coordinator only)
@@ -136,7 +131,6 @@ public fun example_settle_note<T, IthacaType>(
     maker_vault: &mut MakerVault<T, IthacaType>,
     note_id: u64,
     spot_price: u64,
-    report: vector<u8>,
     clock: &Clock,
     ctx: &mut TxContext
 ) {
@@ -147,7 +141,6 @@ public fun example_settle_note<T, IthacaType>(
         maker_vault, 
         note_id, 
         spot_price, 
-        report, 
         clock, 
         ctx
     );

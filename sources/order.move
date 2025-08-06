@@ -5,7 +5,7 @@ use sui::table::{Self, Table};
 use sui::event;
 use sui::clock::{Self, Clock};
 use sui::coin::{Coin};
-use trading_vault::types::{Self, Note, NoteAdditionalInfo, NoteStatus, TradableAsset, Actor, SettlementInfo, FeeInfo};
+use trading_vault::types::{Self, Note, NoteStatus, TradableAsset, Actor, SettlementInfo, FeeInfo};
 use trading_vault::vault::{Self, OrderCap};
 use trading_vault::maker_vault::{Self, MakerOrderCap};
 
@@ -81,7 +81,6 @@ public struct OrderManager<phantom T> has key {
 /// Internal storage structure for notes
 public struct StoredNote has store {
     note: Note,
-    additional_info: NoteAdditionalInfo,
     created_at: u64,
 }
 
@@ -164,7 +163,6 @@ public fun create_note<T, IthacaType>(
     vault: &mut vault::Vault<T>,
     maker_vault: &mut maker_vault::MakerVault<T, IthacaType>,
     note: Note,
-    additional_info: NoteAdditionalInfo,
     clock: &Clock,
     _: &mut TxContext
 ): u64 {
@@ -186,9 +184,9 @@ public fun create_note<T, IthacaType>(
     // Validate payouts
     assert!(win_payout > amount, EInvalidPayout);
     assert!(refund_payout <= amount, EInvalidPayout);
-    let almost_win_payout = types::note_additional_info_almost_win_payout(&additional_info);
-    let almost_win_spread = types::note_additional_info_almost_win_spread(&additional_info);
-    let start_time = types::note_additional_info_start_time(&additional_info);
+    let almost_win_payout = types::note_almost_win_payout(&note);
+    let almost_win_spread = types::note_almost_win_spread(&note);
+    let start_time = types::note_start_time(&note);
     assert!(almost_win_payout > 0 && almost_win_payout <= win_payout, EInvalidPayout);
     assert!(almost_win_spread <= spread, EInvalidSpread);
     assert!(start_time <= expiry_time, EInvalidExpiryTime);
@@ -209,7 +207,6 @@ public fun create_note<T, IthacaType>(
     // Store note
     let stored_note = StoredNote {
         note: copy note,
-        additional_info,
         created_at: clock::timestamp_ms(clock),
     };
     
@@ -241,7 +238,6 @@ public fun settle_note<T, IthacaType>(
     maker_vault: &mut maker_vault::MakerVault<T, IthacaType>,
     note_id: u64,
     spot_price: u64,
-    report: vector<u8>,
     clock: &Clock,
     ctx: &mut TxContext
 ) {
@@ -252,7 +248,6 @@ public fun settle_note<T, IthacaType>(
     
     let stored_note = table::borrow(&order_manager.notes, note_id);
     let note_copy = stored_note.note; // Copy the entire note
-    let additional_info_copy = stored_note.additional_info; // Copy additional info
     
     // Check if note has expired
     assert!(clock::timestamp_ms(clock) >= types::note_expiry_time(&note_copy), ENoteNotExpired);
@@ -260,7 +255,6 @@ public fun settle_note<T, IthacaType>(
     // Determine outcome
     let (status, payout, fee) = determine_settlement_outcome(
         &note_copy, // Pass reference to the copied note
-        &additional_info_copy, // Pass reference to the copied additional info
         spot_price,
         &order_manager.fee_info
     );
@@ -270,7 +264,7 @@ public fun settle_note<T, IthacaType>(
     table::add(&mut order_manager.is_note_settled, note_id, true);
 
     // Store settlement info
-    let settlement_info = types::new_settlement_info(spot_price, clock::timestamp_ms(clock), report);
+    let settlement_info = types::new_settlement_info(spot_price, clock::timestamp_ms(clock));
     table::add(&mut order_manager.settlement_infos, note_id, settlement_info);
 
     // Process settlement
@@ -476,7 +470,6 @@ fun update_maker_locked_balance<T>(
 /// Determine settlement outcome based on note parameters and spot price
 fun determine_settlement_outcome(
     note: &Note,
-    additional_info: &NoteAdditionalInfo,
     spot_price: u64,
     fee_info: &FeeInfo,
 ): (NoteStatus, u64, u64) {
@@ -486,8 +479,8 @@ fun determine_settlement_outcome(
     let amount = types::note_amount(note);
     let win_payout = types::note_win_payout(note);
     let refund_payout = types::note_refund_payout(note);
-    let almost_win_spread = types::note_additional_info_almost_win_spread(additional_info);
-    let almost_win_payout = types::note_additional_info_almost_win_payout(additional_info);
+    let almost_win_spread = types::note_almost_win_spread(note);
+    let almost_win_payout = types::note_almost_win_payout(note);
 
     let (status, payout) = if (types::is_direction_up(&direction)) {
         if (spot_price > starting_price + spread) {
