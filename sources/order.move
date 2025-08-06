@@ -192,10 +192,9 @@ public fun create_note<T, IthacaType>(
     assert!(start_time <= expiry_time, EInvalidExpiryTime);
 
     // Check balances
-    let taker_balance = vault::taker_balance(vault, taker) - taker_locked_balance(order_manager, taker);
+    let taker_balance = taker_withdrawable_balance(order_manager, vault, taker);
     let win_amount = win_payout - amount;
-    let maker_balance = maker_vault::get_maker_collateral(maker_vault, maker, asset) - 
-                        maker_locked_balance(order_manager, maker, *asset);
+    let maker_balance = maker_withdrawable_balance(order_manager, maker_vault, maker, *asset);
 
     assert!(taker_balance >= amount, EInsufficientTakerBalance);
     assert!(maker_balance >= win_amount, EInsufficientMakerBalance);
