@@ -32,8 +32,6 @@ public struct OrderCap has key, store {
 /// Main vault object that holds balances and assets
 public struct Vault<phantom T> has key {
     id: UID,
-    /// Total available assets in the vault
-    total_asset_available: u64,
     /// Mapping of taker address to their balance
     taker_balances: Table<address, u64>,
     /// The actual coin balance held by the vault
@@ -73,7 +71,6 @@ public fun initialize<T>(ctx: &mut TxContext): (VaultAdminCap, OrderCap, Vault<T
 
     let vault = Vault<T> {
         id: object::new(ctx),
-        total_asset_available: 0,
         taker_balances: table::new(ctx),
         balance: balance::zero<T>(),
     };
@@ -99,9 +96,6 @@ public fun deposit<T>(
     } else {
         table::add(&mut vault.taker_balances, sender, amount);
     };
-
-    // Update total available assets
-    vault.total_asset_available = vault.total_asset_available + amount;
 
     // Add coin to vault balance
     let payment_balance = coin::into_balance(payment);
@@ -133,8 +127,7 @@ public fun withdraw<T>(
         table::add(&mut vault.taker_balances, sender, current_balance - amount);
     };
 
-    // Update total available assets
-    vault.total_asset_available = vault.total_asset_available - amount;
+    
 
     // Extract coin from vault balance
     let withdrawn_balance = balance::split(&mut vault.balance, amount);
@@ -182,7 +175,6 @@ public fun adjust_taker_balance<T>(
         } else {
             table::add(&mut vault.taker_balances, taker, amount);
         };
-        vault.total_asset_available = vault.total_asset_available + amount;
     } else {
         // Decrease taker balance (taker lost)
         if (table::contains(&vault.taker_balances, taker)) {
@@ -191,7 +183,6 @@ public fun adjust_taker_balance<T>(
                 table::add(&mut vault.taker_balances, taker, current_balance - amount);
             };
         };
-        vault.total_asset_available = vault.total_asset_available - amount;
     }
 }
 
@@ -210,7 +201,6 @@ public fun transfer_fee_to_treasury<T>(
             table::add(&mut vault.taker_balances, taker, current_balance - fee);
         };
     };
-    vault.total_asset_available = vault.total_asset_available - fee;
 
     // Extract fee from vault balance
     let fee_balance = balance::split(&mut vault.balance, fee);
@@ -226,7 +216,7 @@ public fun add_funds<T>(
 ) {
     let payment_balance = coin::into_balance(payment);
     balance::join(&mut vault.balance, payment_balance);
-    // Note: total_asset_available is updated via adjust_taker_balance
+    // Note: vault balance is automatically updated via balance::join
 }
 
 // === View Functions ===
@@ -242,7 +232,7 @@ public fun taker_balance<T>(vault: &Vault<T>, taker: address): u64 {
 
 /// Get total asset available
 public fun total_asset_available<T>(vault: &Vault<T>): u64 {
-    vault.total_asset_available
+    balance::value(&vault.balance)
 }
 
 /// Get withdrawable balance for a taker (basic version without order integration)
@@ -270,12 +260,6 @@ public fun vault_balance_value<T>(vault: &Vault<T>): u64 {
     balance::value(&vault.balance)
 }
 
-
-
-/// Check if vault is empty and can be migrated (same logic as VaultV7)
-public fun can_migrate_asset<T>(vault: &Vault<T>): bool {
-    vault.total_asset_available == 0
-}
 
 // === Helper Functions ===
 
