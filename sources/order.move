@@ -129,19 +129,28 @@ public struct MakerFeePercentageChanged has copy, drop {
     maker_fee_percentage: u64,
 }
 
+// === Initialization ===
+
+fun init(ctx: &mut TxContext) {
+    let admin_cap = OrderAdminCap {
+        id: object::new(ctx),
+    };
+    transfer::transfer(
+        admin_cap,
+        ctx.sender()
+    )   
+}
+
 // === Public Functions ===
 
 /// Initialize the order manager
 public fun initialize<T>(
+    _: &OrderAdminCap,
     vault_order_cap: OrderCap,
     maker_order_cap: MakerOrderCap,
     treasury: address,
     ctx: &mut TxContext
-): (OrderAdminCap, CoordinatorCap, OrderManager<T>) {
-    let admin_cap = OrderAdminCap {
-        id: object::new(ctx),
-    };
-
+): (CoordinatorCap) {
     let coordinator_cap = CoordinatorCap {
         id: object::new(ctx),
     };
@@ -162,7 +171,9 @@ public fun initialize<T>(
         fee_info,
     };
 
-    (admin_cap, coordinator_cap, order_manager)
+    transfer::share_object(order_manager);
+
+    (coordinator_cap)
 }
 
 /// Create a new trading note (coordinator only)

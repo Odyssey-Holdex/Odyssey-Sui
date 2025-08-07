@@ -98,19 +98,28 @@ public struct CustomMinStakeAmountSet has copy, drop {
     amount: u64,
 }
 
-// === Public Functions ===
+// === Initialization ===
 
-/// Initialize a new maker vault
-/// Returns admin capability and order capability
-public fun initialize<T, IthacaType>(
-    minimum_stake_amount: u64,
-    ctx: &mut TxContext
-): (MakerVaultAdminCap, MakerOrderCap, MakerVault<T, IthacaType>) {
-    assert!(minimum_stake_amount > 0, ENotZeroAmount);
-
+fun init(ctx: &mut TxContext) {
     let admin_cap = MakerVaultAdminCap {
         id: object::new(ctx),
     };
+    transfer::transfer(
+        admin_cap,
+        ctx.sender()
+    )   
+}
+
+// === Public Functions ===
+
+/// Initialize a new maker vault
+/// Returns order capability
+public fun initialize<T, IthacaType>(
+    _: &MakerVaultAdminCap,
+    minimum_stake_amount: u64,
+    ctx: &mut TxContext
+): (MakerOrderCap) {
+    assert!(minimum_stake_amount > 0, ENotZeroAmount);
     
     let order_cap = MakerOrderCap {
         id: object::new(ctx),
@@ -125,7 +134,9 @@ public fun initialize<T, IthacaType>(
         ithaca_balance: balance::zero<IthacaType>(),
     };
 
-    (admin_cap, order_cap, vault)
+    transfer::share_object(vault);
+
+    (order_cap)
 }
 
 /// Register as a maker by staking Ithaca tokens
