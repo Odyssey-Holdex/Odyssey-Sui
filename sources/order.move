@@ -5,7 +5,7 @@ use sui::table::{Self, Table};
 use sui::event;
 use sui::clock::{Self, Clock};
 use sui::coin::{Coin};
-use trading_vault::types::{Self, Note, NoteAdditionalInfo, NoteStatus, TradableAsset, Actor, SettlementInfo, FeeInfo};
+use trading_vault::types::{Self, Note, NoteStatus, TradableAsset, Actor, SettlementInfo, FeeInfo};
 use trading_vault::vault::{Self, OrderCap};
 use trading_vault::maker_vault::{Self, MakerOrderCap};
 
@@ -22,9 +22,6 @@ const ENoteAlreadySettled: vector<u8> = b"Note has already been settled";
 
 #[error]
 const ENoteNotExpired: vector<u8> = b"Note has not yet expired and cannot be settled";
-
-#[error]
-const EOnlyByCoordinator: vector<u8> = b"Only coordinator can perform this action";
 
 #[error]
 const EInsufficientTakerBalance: vector<u8> = b"Taker has insufficient balance for this note";
@@ -44,13 +41,15 @@ const EInvalidFeePercentage: vector<u8> = b"Fee percentage exceeds maximum allow
 #[error]
 const EInvalidSpread: vector<u8> = b"Invalid spread value provided";
 
-#[error]
-const ENotSameAddress: vector<u8> = b"Address is already set to this value";
-
 // === Structs ===
 
 /// Administrative capability for order operations
 public struct OrderAdminCap has key, store {
+    id: UID,
+}
+
+/// Coordinator capability for creating and settling notes
+public struct CoordinatorCap has key, store {
     id: UID,
 }
 
@@ -73,8 +72,6 @@ public struct OrderManager<phantom T> has key {
     vault_order_cap: OrderCap,
     /// Maker order capability for interacting with maker vault
     maker_order_cap: MakerOrderCap,
-    /// Coordinator address
-    coordinator: address,
     /// Treasury address
     treasury: address,
     /// Fee information
@@ -84,7 +81,6 @@ public struct OrderManager<phantom T> has key {
 /// Internal storage structure for notes
 public struct StoredNote has store {
     note: Note,
-    additional_info: NoteAdditionalInfo,
     created_at: u64,
 }
 
@@ -92,6 +88,15 @@ public struct StoredNote has store {
 public struct MakerAssetKey has copy, drop, store {
     maker: address,
     asset: TradableAsset,
+}
+
+/// Settlement action to eliminate duplication between outcome determination and processing
+public struct SettlementAction has drop {
+    status: NoteStatus,
+    payout: u64,
+    fee: u64,
+    balance_change: u64,          // Amount transferred between parties
+    taker_gains: bool,            // true if taker gains balance, false if maker gains
 }
 
 // === Events ===
@@ -115,11 +120,6 @@ public struct NoteSettled has copy, drop {
     fee: u64,
 }
 
-/// Emitted when coordinator is changed
-public struct CoordinatorChanged has copy, drop {
-    new_coordinator: address,
-}
-
 /// Emitted when fee percentages are changed
 public struct TakerFeePercentageChanged has copy, drop {
     taker_fee_percentage: u64,
@@ -135,11 +135,14 @@ public struct MakerFeePercentageChanged has copy, drop {
 public fun initialize<T>(
     vault_order_cap: OrderCap,
     maker_order_cap: MakerOrderCap,
-    coordinator: address,
     treasury: address,
     ctx: &mut TxContext
-): (OrderAdminCap, OrderManager<T>) {
+): (OrderAdminCap, CoordinatorCap, OrderManager<T>) {
     let admin_cap = OrderAdminCap {
+        id: object::new(ctx),
+    };
+
+    let coordinator_cap = CoordinatorCap {
         id: object::new(ctx),
     };
 
@@ -155,29 +158,23 @@ public fun initialize<T>(
         is_note_settled: table::new(ctx),
         vault_order_cap,
         maker_order_cap,
-        coordinator,
         treasury,
         fee_info,
     };
 
-    (admin_cap, order_manager)
+    (admin_cap, coordinator_cap, order_manager)
 }
 
 /// Create a new trading note (coordinator only)
 public fun create_note<T, IthacaType>(
+    _: &CoordinatorCap,
     order_manager: &mut OrderManager<T>,
     vault: &mut vault::Vault<T>,
     maker_vault: &mut maker_vault::MakerVault<T, IthacaType>,
     note: Note,
-    additional_info: NoteAdditionalInfo,
     clock: &Clock,
-    ctx: &mut TxContext
+    _: &mut TxContext
 ): u64 {
-    let sender = tx_context::sender(ctx);
-    
-    // Only coordinator can create notes
-    assert!(sender == order_manager.coordinator, EOnlyByCoordinator);
-    
     // Validate note data
     let amount = types::note_amount(&note);
     let win_payout = types::note_win_payout(&note);
@@ -196,18 +193,17 @@ public fun create_note<T, IthacaType>(
     // Validate payouts
     assert!(win_payout > amount, EInvalidPayout);
     assert!(refund_payout <= amount, EInvalidPayout);
-    let almost_win_payout = types::note_additional_info_almost_win_payout(&additional_info);
-    let almost_win_spread = types::note_additional_info_almost_win_spread(&additional_info);
-    let start_time = types::note_additional_info_start_time(&additional_info);
+    let almost_win_payout = types::note_almost_win_payout(&note);
+    let almost_win_spread = types::note_almost_win_spread(&note);
+    let start_time = types::note_start_time(&note);
     assert!(almost_win_payout > 0 && almost_win_payout <= win_payout, EInvalidPayout);
     assert!(almost_win_spread <= spread, EInvalidSpread);
     assert!(start_time <= expiry_time, EInvalidExpiryTime);
 
     // Check balances
-    let taker_balance = vault::taker_balance(vault, taker) - taker_locked_balance(order_manager, taker);
+    let taker_balance = taker_withdrawable_balance(order_manager, vault, taker);
     let win_amount = win_payout - amount;
-    let maker_balance = maker_vault::get_maker_collateral(maker_vault, maker, asset) - 
-                        maker_locked_balance(order_manager, maker, *asset);
+    let maker_balance = maker_withdrawable_balance(order_manager, maker_vault, maker, *asset);
 
     assert!(taker_balance >= amount, EInsufficientTakerBalance);
     assert!(maker_balance >= win_amount, EInsufficientMakerBalance);
@@ -219,7 +215,6 @@ public fun create_note<T, IthacaType>(
     // Store note
     let stored_note = StoredNote {
         note: copy note,
-        additional_info,
         created_at: clock::timestamp_ms(clock),
     };
     
@@ -245,17 +240,15 @@ public fun create_note<T, IthacaType>(
 
 /// Settle a note with the final spot price (coordinator only)
 public fun settle_note<T, IthacaType>(
+    _: &CoordinatorCap,
     order_manager: &mut OrderManager<T>,
     vault: &mut vault::Vault<T>,
     maker_vault: &mut maker_vault::MakerVault<T, IthacaType>,
     note_id: u64,
     spot_price: u64,
-    report: vector<u8>,
     clock: &Clock,
     ctx: &mut TxContext
 ) {
-    let sender = tx_context::sender(ctx);
-    assert!(sender == order_manager.coordinator, EOnlyByCoordinator);
     assert!(table::contains(&order_manager.notes, note_id), ENoteNotFound);
     
     let is_settled = *table::borrow(&order_manager.is_note_settled, note_id);
@@ -263,15 +256,13 @@ public fun settle_note<T, IthacaType>(
     
     let stored_note = table::borrow(&order_manager.notes, note_id);
     let note_copy = stored_note.note; // Copy the entire note
-    let additional_info_copy = stored_note.additional_info; // Copy additional info
     
     // Check if note has expired
     assert!(clock::timestamp_ms(clock) >= types::note_expiry_time(&note_copy), ENoteNotExpired);
 
     // Determine outcome
-    let (status, payout, fee) = determine_settlement_outcome(
+    let settlement_action = determine_settlement_outcome(
         &note_copy, // Pass reference to the copied note
-        &additional_info_copy, // Pass reference to the copied additional info
         spot_price,
         &order_manager.fee_info
     );
@@ -281,8 +272,13 @@ public fun settle_note<T, IthacaType>(
     table::add(&mut order_manager.is_note_settled, note_id, true);
 
     // Store settlement info
-    let settlement_info = types::new_settlement_info(spot_price, clock::timestamp_ms(clock), report);
+    let settlement_info = types::new_settlement_info(spot_price, clock::timestamp_ms(clock));
     table::add(&mut order_manager.settlement_infos, note_id, settlement_info);
+
+    // Save values for event before moving settlement_action
+    let final_status = settlement_action.status;
+    let final_payout = settlement_action.payout;
+    let final_fee = settlement_action.fee;
 
     // Process settlement
     process_settlement(
@@ -290,34 +286,17 @@ public fun settle_note<T, IthacaType>(
         vault,
         maker_vault,
         &note_copy, // Pass reference to the copied note
-        status,
-        payout,
-        fee,
+        settlement_action,
         ctx
     );
 
     // Emit event
     event::emit(NoteSettled {
         note_id,
-        status,
+        status: final_status,
         settlement_price: spot_price,
-        payout,
-        fee,
-    });
-}
-
-/// Change coordinator (admin only)
-public fun change_coordinator<T>(
-    _: &OrderAdminCap,
-    order_manager: &mut OrderManager<T>,
-    new_coordinator: address,
-) {
-    assert!(new_coordinator != @0x0, EInvalidNote);
-    assert!(new_coordinator != order_manager.coordinator, ENotSameAddress);
-    order_manager.coordinator = new_coordinator;
-
-    event::emit(CoordinatorChanged {
-        new_coordinator,
+        payout: final_payout,
+        fee: final_fee,
     });
 }
 
@@ -361,8 +340,9 @@ public fun taker_withdraw<T>(
     amount: u64,
     ctx: &mut TxContext
 ): Coin<T> {
-    let locked_amount = taker_locked_balance(order_manager, tx_context::sender(ctx));
-    vault::withdraw(&order_manager.vault_order_cap, vault, amount, locked_amount, ctx)
+    let sender = tx_context::sender(ctx);
+    let locked_amount = taker_locked_balance(order_manager, sender);
+    vault::withdraw(&order_manager.vault_order_cap, vault, sender, amount, locked_amount, ctx)
 }
 
 public fun maker_withdraw<T, IthacaType>(
@@ -442,11 +422,6 @@ public fun note_counter<T>(order_manager: &OrderManager<T>): u64 {
     order_manager.note_counter
 }
 
-/// Get coordinator
-public fun coordinator<T>(order_manager: &OrderManager<T>): address {
-    order_manager.coordinator
-}
-
 /// Get treasury
 public fun treasury<T>(order_manager: &OrderManager<T>): address {
     order_manager.treasury
@@ -507,18 +482,17 @@ fun update_maker_locked_balance<T>(
 /// Determine settlement outcome based on note parameters and spot price
 fun determine_settlement_outcome(
     note: &Note,
-    additional_info: &NoteAdditionalInfo,
     spot_price: u64,
     fee_info: &FeeInfo,
-): (NoteStatus, u64, u64) {
+): SettlementAction {
     let starting_price = types::note_starting_price(note);
     let spread = types::note_spread(note);
     let direction = types::note_direction(note);
     let amount = types::note_amount(note);
     let win_payout = types::note_win_payout(note);
     let refund_payout = types::note_refund_payout(note);
-    let almost_win_spread = types::note_additional_info_almost_win_spread(additional_info);
-    let almost_win_payout = types::note_additional_info_almost_win_payout(additional_info);
+    let almost_win_spread = types::note_almost_win_spread(note);
+    let almost_win_payout = types::note_almost_win_payout(note);
 
     let (status, payout) = if (types::is_direction_up(&direction)) {
         if (spot_price > starting_price + spread) {
@@ -542,25 +516,68 @@ fun determine_settlement_outcome(
         }
     };
 
-    // Calculate fee
-    let fee = if (types::is_note_status_win(&status)) {
+    // Calculate fee and determine settlement actions
+    if (types::is_note_status_win(&status)) {
+        // Taker wins
         let transferred_amount = win_payout - amount;
-        calculate_fee(transferred_amount, types::actor_taker(), fee_info)
+        let fee = calculate_fee(transferred_amount, types::actor_taker(), fee_info);
+        SettlementAction {
+            status,
+            payout,
+            fee,
+            balance_change: transferred_amount,
+            taker_gains: true,
+        }
     } else if (types::is_note_status_loss(&status)) {
-        calculate_fee(amount, types::actor_maker(), fee_info)
+        // Maker wins
+        let fee = calculate_fee(amount, types::actor_maker(), fee_info);
+        SettlementAction {
+            status,
+            payout,
+            fee,
+            balance_change: amount,
+            taker_gains: false,
+        }
     } else if (types::is_note_status_almost_win(&status)) {
+        // Almost win case
         if (almost_win_payout > amount) {
+            // Taker gets some profit
             let transferred_amount = almost_win_payout - amount;
-            calculate_fee(transferred_amount, types::actor_taker(), fee_info)
+            let fee = calculate_fee(transferred_amount, types::actor_taker(), fee_info);
+            SettlementAction {
+                status,
+                payout,
+                fee,
+                balance_change: transferred_amount,
+                taker_gains: true,
+            }
         } else {
+            // Maker gets some profit
             let transferred_amount = amount - almost_win_payout;
-            calculate_fee(transferred_amount, types::actor_maker(), fee_info)
+            let fee = calculate_fee(transferred_amount, types::actor_maker(), fee_info);
+            SettlementAction {
+                status,
+                payout,
+                fee,
+                balance_change: transferred_amount,
+                taker_gains: false,
+            }
         }
     } else {
-        0 // No fee for refunds
-    };
-
-    (status, payout, fee)
+        // Refund case
+        let balance_change = if (amount > payout) {
+            amount - payout
+        } else {
+            0
+        };
+        SettlementAction {
+            status,
+            payout,
+            fee: 0, // No fees in refund case
+            balance_change,
+            taker_gains: false,
+        }
+    }
 }
 
 /// Process the settlement by transferring funds and fees
@@ -569,9 +586,7 @@ fun process_settlement<T, IthacaType>(
     vault: &mut vault::Vault<T>,
     maker_vault: &mut maker_vault::MakerVault<T, IthacaType>,
     note: &Note,
-    status: NoteStatus,
-    payout: u64,
-    fee: u64,
+    settlement_action: SettlementAction,
     ctx: &mut TxContext
 ) {
     let taker = types::note_taker(note);
@@ -585,81 +600,35 @@ fun process_settlement<T, IthacaType>(
     update_taker_locked_balance(order_manager, taker, amount, false);
     update_maker_locked_balance(order_manager, maker, asset, win_amount, false);
 
-    if (types::is_note_status_win(&status)) {
-        // Taker wins
-        let transferred_amount = payout - amount;
-        
-        // Transfer from maker to taker
-        vault::adjust_taker_balance(&order_manager.vault_order_cap, vault, taker, transferred_amount, true);
-        maker_vault::adjust_maker_balance(&order_manager.maker_order_cap, maker_vault, maker, asset, transferred_amount, false);
-        
-        let maker_payment = maker_vault::transfer_to_taker_vault(&order_manager.maker_order_cap, maker_vault, transferred_amount, ctx);
-        vault::add_funds(&order_manager.vault_order_cap, vault, maker_payment);
-
-        // Handle fee (deducted from taker)
-        if (fee > 0) {
-            let fee_payment = vault::transfer_fee_to_treasury(&order_manager.vault_order_cap, vault, taker, fee, ctx);
-            transfer::public_transfer(fee_payment, order_manager.treasury);
-        };
-    } else if (types::is_note_status_loss(&status)) {
-        // Maker wins
-        
-        // Transfer from taker to maker
-        vault::adjust_taker_balance(&order_manager.vault_order_cap, vault, taker, amount, false);
-        maker_vault::adjust_maker_balance(&order_manager.maker_order_cap, maker_vault, maker, asset, amount, true);
-        
-        let taker_payment = vault::transfer_to_maker_vault(&order_manager.vault_order_cap, vault, amount, ctx);
-        maker_vault::add_funds(&order_manager.maker_order_cap, maker_vault, taker_payment);
-
-        // Handle fee (deducted from maker)
-        if (fee > 0) {
-            let fee_payment = maker_vault::transfer_fee_to_treasury(&order_manager.maker_order_cap, maker_vault, maker, asset, fee, ctx);
-            transfer::public_transfer(fee_payment, order_manager.treasury);
-        };
-    } else if (types::is_note_status_almost_win(&status)) {
-        // Almost win case
-        if (payout > amount) {
-            // Taker gets some profit
-            let transferred_amount = payout - amount;
-            vault::adjust_taker_balance(&order_manager.vault_order_cap, vault, taker, transferred_amount, true);
-            maker_vault::adjust_maker_balance(&order_manager.maker_order_cap, maker_vault, maker, asset, transferred_amount, false);
+    // Execute settlement based on action
+    if (settlement_action.balance_change > 0) {
+        if (settlement_action.taker_gains) {
+            // Transfer from maker to taker - credit full amount to taker
+            vault::adjust_taker_balance(&order_manager.vault_order_cap, vault, taker, settlement_action.balance_change, true);
+            maker_vault::adjust_maker_balance(&order_manager.maker_order_cap, maker_vault, maker, asset, settlement_action.balance_change, false);
             
-            let maker_payment = maker_vault::transfer_to_taker_vault(&order_manager.maker_order_cap, maker_vault, transferred_amount, ctx);
+            let maker_payment = maker_vault::transfer_to_taker_vault(&order_manager.maker_order_cap, maker_vault, settlement_action.balance_change, ctx);
             vault::add_funds(&order_manager.vault_order_cap, vault, maker_payment);
-
-            // Fee from taker
-            if (fee > 0) {
-                let fee_payment = vault::transfer_fee_to_treasury(&order_manager.vault_order_cap, vault, taker, fee, ctx);
-                transfer::public_transfer(fee_payment, order_manager.treasury);
-            };
         } else {
-            // Maker gets some profit
-            let transferred_amount = amount - payout;
-            vault::adjust_taker_balance(&order_manager.vault_order_cap, vault, taker, transferred_amount, false);
-            maker_vault::adjust_maker_balance(&order_manager.maker_order_cap, maker_vault, maker, asset, transferred_amount, true);
+            // Transfer from taker to maker - credit full amount to maker
+            vault::adjust_taker_balance(&order_manager.vault_order_cap, vault, taker, settlement_action.balance_change, false);
+            maker_vault::adjust_maker_balance(&order_manager.maker_order_cap, maker_vault, maker, asset, settlement_action.balance_change, true);
             
-            let taker_payment = vault::transfer_to_maker_vault(&order_manager.vault_order_cap, vault, transferred_amount, ctx);
+            let taker_payment = vault::transfer_to_maker_vault(&order_manager.vault_order_cap, vault, settlement_action.balance_change, ctx);
             maker_vault::add_funds(&order_manager.maker_order_cap, maker_vault, taker_payment);
+        };
+    };
 
-            // Fee from maker
-            if (fee > 0) {
-                let fee_payment = maker_vault::transfer_fee_to_treasury(&order_manager.maker_order_cap, maker_vault, maker, asset, fee, ctx);
-                transfer::public_transfer(fee_payment, order_manager.treasury);
-            };
+    // Handle fees - deduct separately from the winner's balance
+    if (settlement_action.fee > 0) {
+        if (settlement_action.taker_gains) {
+            let fee_payment = vault::transfer_fee_to_treasury(&order_manager.vault_order_cap, vault, taker, settlement_action.fee, ctx);
+            transfer::public_transfer(fee_payment, order_manager.treasury);
+        } else {
+            let fee_payment = maker_vault::transfer_fee_to_treasury(&order_manager.maker_order_cap, maker_vault, maker, asset, settlement_action.fee, ctx);
+            transfer::public_transfer(fee_payment, order_manager.treasury);
         };
-    } else {
-        // Refund case
-        if (amount > payout) {
-            let transferred_amount = amount - payout;
-            // Transfer refund cost to maker
-            vault::adjust_taker_balance(&order_manager.vault_order_cap, vault, taker, transferred_amount, false);
-            maker_vault::adjust_maker_balance(&order_manager.maker_order_cap, maker_vault, maker, asset, transferred_amount, true);
-            
-            let taker_payment = vault::transfer_to_maker_vault(&order_manager.vault_order_cap, vault, transferred_amount, ctx);
-            maker_vault::add_funds(&order_manager.maker_order_cap, maker_vault, taker_payment);
-        };
-        // No fees in refund case
-    }
+    };
 }
 
 /// Calculate fee based on amount and actor

@@ -45,14 +45,9 @@ public struct Note has copy, drop, store {
     expiry_time: u64,         // Expiry timestamp
     nonce: u64,               // Unique identifier
     refund_payout: u64,       // Payout if bet results in refund
-}
-
-/// Additional note parameters
-public struct NoteAdditionalInfo has copy, drop, store {
     almost_win_spread: u64,   // Spread to define almost win zone
     almost_win_payout: u64,   // Payout if bet results in almost win
     start_time: u64,          // Start time for the note
-    report: vector<u8>,       // Price report data
 }
 
 /// Maker information structure (from MakerVaultV7)
@@ -65,11 +60,10 @@ public struct MakerInfo has copy, drop, store {
     collateral_mstr: u64,
 }
 
-/// Settlement information (from OrderV12)
+/// Settlement information (from OrderV12) - without report field
 public struct SettlementInfo has copy, drop, store {
     price: u64,
     timestamp: u64,
-    report: vector<u8>,
 }
 
 /// Fee manager structure
@@ -98,6 +92,9 @@ public fun new_note(
     expiry_time: u64,
     nonce: u64,
     refund_payout: u64,
+    almost_win_spread: u64,
+    almost_win_payout: u64,
+    start_time: u64,
 ): Note {
     Note {
         taker,
@@ -111,21 +108,9 @@ public fun new_note(
         expiry_time,
         nonce,
         refund_payout,
-    }
-}
-
-/// Create NoteAdditionalInfo
-public fun new_note_additional_info(
-    almost_win_spread: u64,
-    almost_win_payout: u64,
-    start_time: u64,
-    report: vector<u8>,
-): NoteAdditionalInfo {
-    NoteAdditionalInfo {
         almost_win_spread,
         almost_win_payout,
         start_time,
-        report,
     }
 }
 
@@ -147,12 +132,10 @@ public fun new_maker_info(
 public fun new_settlement_info(
     price: u64,
     timestamp: u64,
-    report: vector<u8>,
 ): SettlementInfo {
     SettlementInfo {
         price,
         timestamp,
-        report,
     }
 }
 
@@ -200,13 +183,9 @@ public fun note_win_payout(note: &Note): u64 { note.win_payout }
 public fun note_expiry_time(note: &Note): u64 { note.expiry_time }
 public fun note_nonce(note: &Note): u64 { note.nonce }
 public fun note_refund_payout(note: &Note): u64 { note.refund_payout }
-
-// === Getter functions for NoteAdditionalInfo ===
-
-public fun note_additional_info_almost_win_spread(info: &NoteAdditionalInfo): u64 { info.almost_win_spread }
-public fun note_additional_info_almost_win_payout(info: &NoteAdditionalInfo): u64 { info.almost_win_payout }
-public fun note_additional_info_start_time(info: &NoteAdditionalInfo): u64 { info.start_time }
-public fun note_additional_info_report(info: &NoteAdditionalInfo): &vector<u8> { &info.report }
+public fun note_almost_win_spread(note: &Note): u64 { note.almost_win_spread }
+public fun note_almost_win_payout(note: &Note): u64 { note.almost_win_payout }
+public fun note_start_time(note: &Note): u64 { note.start_time }
 
 // === Getter functions for MakerInfo ===
 

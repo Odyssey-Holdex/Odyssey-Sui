@@ -112,21 +112,21 @@ public fun deposit<T>(
 public fun withdraw<T>(
     order_cap: &OrderCap, // Order capability to restrict access
     vault: &mut Vault<T>,
+    taker: address,
     amount: u64,
     locked_amount: u64, // Amount locked in orders
     ctx: &mut TxContext
 ): Coin<T> {
     assert!(amount > 0, ENotZeroAmount);
-    
-    let sender = tx_context::sender(ctx);
-    let withdrawable_balance = get_withdrawable_balance_with_locked(order_cap, vault, sender, locked_amount);
+
+    let withdrawable_balance = get_withdrawable_balance_with_locked(order_cap, vault, taker, locked_amount);
     
     assert!(amount <= withdrawable_balance, EInsufficientBalance);
 
     // Update taker balance
-    let current_balance = table::remove(&mut vault.taker_balances, sender);
+    let current_balance = table::remove(&mut vault.taker_balances, taker);
     if (current_balance > amount) {
-        table::add(&mut vault.taker_balances, sender, current_balance - amount);
+        table::add(&mut vault.taker_balances, taker, current_balance - amount);
     };
 
     
@@ -137,7 +137,7 @@ public fun withdraw<T>(
 
     // Emit event
     event::emit(Withdrawn {
-        trader: sender,
+        trader: taker,
         amount,
     });
 
