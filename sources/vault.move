@@ -53,18 +53,19 @@ public struct Withdrawn has copy, drop {
 }
 
 
-
-
-
-// === Public Functions ===
-
-/// Initialize a new vault with given asset type
-/// Returns admin capability and order capability
-public fun initialize<T>(ctx: &mut TxContext): (VaultAdminCap, OrderCap, Vault<T>) {
+fun init(ctx: &mut TxContext) {
     let admin_cap = VaultAdminCap {
         id: object::new(ctx),
     };
-    
+    transfer::transfer(
+        admin_cap,
+        ctx.sender()
+    )   
+}
+
+/// Initialize a new vault with given asset type
+/// Returns admin capability and order capability
+public fun initialize<T>(_: &VaultAdminCap, ctx: &mut TxContext): (OrderCap) {
     let order_cap = OrderCap {
         id: object::new(ctx),
     };
@@ -75,8 +76,13 @@ public fun initialize<T>(ctx: &mut TxContext): (VaultAdminCap, OrderCap, Vault<T
         balance: balance::zero<T>(),
     };
 
-    (admin_cap, order_cap, vault)
+    transfer::share_object(vault);
+
+    (order_cap);
 }
+
+
+// === Public Functions ===
 
 /// Deposit assets into the vault
 public fun deposit<T>(
