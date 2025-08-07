@@ -6,6 +6,11 @@ use sui::balance::{Self, Balance};
 use sui::table::{Self, Table};
 use sui::event;
 
+// === Constants ===
+
+/// Current version of the vault module
+const VERSION: u64 = 1;
+
 // === Errors ===
 
 #[error]
@@ -16,6 +21,15 @@ const ENotZeroAddress: vector<u8> = b"Address cannot be zero";
 
 #[error]
 const EInsufficientBalance: vector<u8> = b"Insufficient balance for this operation";
+
+#[error]
+const ENotAdmin: vector<u8> = b"Not the right admin for this vault";
+
+#[error]
+const ENotUpgrade: vector<u8> = b"Migration is not an upgrade";
+
+#[error]
+const EWrongVersion: vector<u8> = b"Calling functions from the wrong package version";
 
 // === Structs ===
 
@@ -32,6 +46,10 @@ public struct OrderCap has key, store {
 /// Main vault object that holds balances and assets
 public struct Vault<phantom T> has key {
     id: UID,
+    /// Current version of this vault instance
+    version: u64,
+    /// Admin capability ID that controls this vault
+    admin: ID,
     /// Mapping of taker address to their balance
     taker_balances: Table<address, u64>,
     /// The actual coin balance held by the vault
@@ -64,14 +82,16 @@ fun init(ctx: &mut TxContext) {
 }
 
 /// Initialize a new vault with given asset type
-/// Returns admin capability and order capability
-public fun initialize<T>(_: &VaultAdminCap, ctx: &mut TxContext): (OrderCap) {
+/// Returns order capability
+public fun initialize<T>(admin_cap: &VaultAdminCap, ctx: &mut TxContext): (OrderCap) {
     let order_cap = OrderCap {
         id: object::new(ctx),
     };
 
     let vault = Vault<T> {
         id: object::new(ctx),
+        version: VERSION,
+        admin: object::id(admin_cap),
         taker_balances: table::new(ctx),
         balance: balance::zero<T>(),
     };
@@ -90,6 +110,8 @@ public fun deposit<T>(
     payment: Coin<T>,
     ctx: &mut TxContext
 ) {
+    assert!(vault.version == VERSION, EWrongVersion);
+    
     let amount = coin::value(&payment);
     assert!(amount > 0, ENotZeroAmount);
     
@@ -123,6 +145,7 @@ public fun withdraw<T>(
     locked_amount: u64, // Amount locked in orders
     ctx: &mut TxContext
 ): Coin<T> {
+    assert!(vault.version == VERSION, EWrongVersion);
     assert!(amount > 0, ENotZeroAmount);
 
     let withdrawable_balance = get_withdrawable_balance_with_locked(order_cap, vault, taker, locked_amount);
@@ -151,6 +174,14 @@ public fun withdraw<T>(
 }
 
 // === Admin Functions ===
+
+/// Migrate vault to new version (admin only)
+entry fun migrate<T>(vault: &mut Vault<T>, admin_cap: &VaultAdminCap) {
+    assert!(vault.admin == object::id(admin_cap), ENotAdmin);
+    assert!(vault.version < VERSION, ENotUpgrade);
+    vault.version = VERSION;
+}
+
 // Note: Asset type changes not supported in Move - types are immutable after creation
 
 // === Order Module Functions (restricted) ===
@@ -162,6 +193,7 @@ public fun transfer_to_maker_vault<T>(
     amount: u64,
     ctx: &mut TxContext
 ): Coin<T> {
+    assert!(vault.version == VERSION, EWrongVersion);
     let transfer_balance = balance::split(&mut vault.balance, amount);
     coin::from_balance(transfer_balance, ctx)
 }
@@ -175,6 +207,7 @@ public fun adjust_taker_balance<T>(
     amount: u64,
     is_win: bool,
 ) {
+    assert!(vault.version == VERSION, EWrongVersion);
     if (is_win) {
         // Increase taker balance (taker won)
         if (table::contains(&vault.taker_balances, taker)) {
@@ -202,6 +235,7 @@ public fun transfer_fee_to_treasury<T>(
     fee: u64,
     ctx: &mut TxContext
 ): Coin<T> {
+    assert!(vault.version == VERSION, EWrongVersion);
     // Reduce taker balance
     if (table::contains(&vault.taker_balances, taker)) {
         let current_balance = table::remove(&mut vault.taker_balances, taker);
@@ -222,6 +256,7 @@ public fun add_funds<T>(
     vault: &mut Vault<T>,
     payment: Coin<T>,
 ) {
+    assert!(vault.version == VERSION, EWrongVersion);
     let payment_balance = coin::into_balance(payment);
     balance::join(&mut vault.balance, payment_balance);
     // Note: vault balance is automatically updated via balance::join
@@ -250,6 +285,7 @@ public fun get_withdrawable_balance_with_locked<T>(
     taker: address, 
     locked_amount: u64
 ): u64 {
+    assert!(vault.version == VERSION, EWrongVersion);
     let total_balance = taker_balance(vault, taker);
     if (total_balance >= locked_amount) {
         total_balance - locked_amount

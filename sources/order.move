@@ -9,6 +9,11 @@ use trading_vault::types::{Self, Note, NoteStatus, TradableAsset, Actor, Settlem
 use trading_vault::vault::{Self, OrderCap};
 use trading_vault::maker_vault::{Self, MakerOrderCap};
 
+// === Constants ===
+
+/// Current version of the order module
+const VERSION: u64 = 1;
+
 // === Errors ===
 
 #[error]
@@ -41,6 +46,15 @@ const EInvalidFeePercentage: vector<u8> = b"Fee percentage exceeds maximum allow
 #[error]
 const EInvalidSpread: vector<u8> = b"Invalid spread value provided";
 
+#[error]
+const ENotAdmin: vector<u8> = b"Not the right admin for this order manager";
+
+#[error]
+const ENotUpgrade: vector<u8> = b"Migration is not an upgrade";
+
+#[error]
+const EWrongVersion: vector<u8> = b"Calling functions from the wrong package version";
+
 // === Structs ===
 
 /// Administrative capability for order operations
@@ -56,6 +70,10 @@ public struct CoordinatorCap has key, store {
 /// Order manager that tracks all trading notes and locked balances
 public struct OrderManager<phantom T> has key {
     id: UID,
+    /// Current version of this order manager instance
+    version: u64,
+    /// Admin capability ID that controls this order manager
+    admin: ID,
     /// Counter for generating unique note IDs
     note_counter: u64,
     /// Mapping of note ID to note data
@@ -145,7 +163,7 @@ fun init(ctx: &mut TxContext) {
 
 /// Initialize the order manager
 public fun initialize<T>(
-    _: &OrderAdminCap,
+    admin_cap: &OrderAdminCap,
     vault_order_cap: OrderCap,
     maker_order_cap: MakerOrderCap,
     treasury: address,
@@ -159,6 +177,8 @@ public fun initialize<T>(
 
     let order_manager = OrderManager<T> {
         id: object::new(ctx),
+        version: VERSION,
+        admin: object::id(admin_cap),
         note_counter: 0,
         notes: table::new(ctx),
         settlement_infos: table::new(ctx),
@@ -186,6 +206,8 @@ public fun create_note<T, IthacaType>(
     clock: &Clock,
     _: &mut TxContext
 ): u64 {
+    assert!(order_manager.version == VERSION, EWrongVersion);
+    
     // Validate note data
     let amount = types::note_amount(&note);
     let win_payout = types::note_win_payout(&note);
@@ -260,6 +282,7 @@ public fun settle_note<T, IthacaType>(
     clock: &Clock,
     ctx: &mut TxContext
 ) {
+    assert!(order_manager.version == VERSION, EWrongVersion);
     assert!(table::contains(&order_manager.notes, note_id), ENoteNotFound);
     
     let is_settled = *table::borrow(&order_manager.is_note_settled, note_id);
@@ -311,12 +334,20 @@ public fun settle_note<T, IthacaType>(
     });
 }
 
+/// Migrate order manager to new version (admin only)
+entry fun migrate<T>(order_manager: &mut OrderManager<T>, admin_cap: &OrderAdminCap) {
+    assert!(order_manager.admin == object::id(admin_cap), ENotAdmin);
+    assert!(order_manager.version < VERSION, ENotUpgrade);
+    order_manager.version = VERSION;
+}
+
 /// Set taker fee percentage (admin only)
 public fun set_taker_fee_percentage<T>(
     _: &OrderAdminCap,
     order_manager: &mut OrderManager<T>,
     taker_fee_percentage: u64,
 ) {
+    assert!(order_manager.version == VERSION, EWrongVersion);
     assert!(taker_fee_percentage <= types::max_fee_percentage(), EInvalidFeePercentage);
     order_manager.fee_info = types::new_fee_info(
         taker_fee_percentage,
@@ -334,6 +365,7 @@ public fun set_maker_fee_percentage<T>(
     order_manager: &mut OrderManager<T>,
     maker_fee_percentage: u64,
 ) {
+    assert!(order_manager.version == VERSION, EWrongVersion);
     assert!(maker_fee_percentage <= types::max_fee_percentage(), EInvalidFeePercentage);
     order_manager.fee_info = types::new_fee_info(
         types::fee_info_taker_percentage(&order_manager.fee_info),
@@ -351,6 +383,7 @@ public fun taker_withdraw<T>(
     amount: u64,
     ctx: &mut TxContext
 ): Coin<T> {
+    assert!(order_manager.version == VERSION, EWrongVersion);
     let sender = tx_context::sender(ctx);
     let locked_amount = taker_locked_balance(order_manager, sender);
     vault::withdraw(&order_manager.vault_order_cap, vault, sender, amount, locked_amount, ctx)
@@ -363,6 +396,7 @@ public fun maker_withdraw<T, IthacaType>(
     amount: u64,
     ctx: &mut TxContext
 ): Coin<T> {
+    assert!(order_manager.version == VERSION, EWrongVersion);
     let sender = tx_context::sender(ctx);
     let locked_amount = maker_locked_balance(order_manager, sender, tradable_asset);
     maker_vault::withdraw_collateral(&order_manager.maker_order_cap, maker_vault, sender, tradable_asset, locked_amount, amount, ctx)
