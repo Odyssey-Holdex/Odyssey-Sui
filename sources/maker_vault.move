@@ -7,6 +7,11 @@ use sui::table::{Self, Table};
 use sui::event;
 use trading_vault::types::{Self, TradableAsset, MakerInfo};
 
+// === Constants ===
+
+/// Current version of the maker vault module
+const VERSION: u64 = 1;
+
 // === Errors ===
 
 #[error]
@@ -27,6 +32,15 @@ const EInsufficientCollateral: vector<u8> = b"Insufficient collateral for this o
 #[error]
 const ECollateralMustBeZero: vector<u8> = b"Collateral amount must be zero for this operation";
 
+#[error]
+const ENotAdmin: vector<u8> = b"Not the right admin for this maker vault";
+
+#[error]
+const ENotUpgrade: vector<u8> = b"Migration is not an upgrade";
+
+#[error]
+const EWrongVersion: vector<u8> = b"Calling functions from the wrong package version";
+
 // === Structs ===
 
 /// Administrative capability for maker vault operations
@@ -42,6 +56,10 @@ public struct MakerOrderCap has key, store {
 /// Main maker vault object that holds maker information and collateral
 public struct MakerVault<phantom T, phantom IthacaType> has key {
     id: UID,
+    /// Current version of this maker vault instance
+    version: u64,
+    /// Admin capability ID that controls this vault
+    admin: ID,
     /// Mapping of maker address to their info
     makers: Table<address, MakerInfo>,
     /// Minimum stake amount required to become a maker
@@ -98,19 +116,28 @@ public struct CustomMinStakeAmountSet has copy, drop {
     amount: u64,
 }
 
-// === Public Functions ===
+// === Initialization ===
 
-/// Initialize a new maker vault
-/// Returns admin capability and order capability
-public fun initialize<T, IthacaType>(
-    minimum_stake_amount: u64,
-    ctx: &mut TxContext
-): (MakerVaultAdminCap, MakerOrderCap, MakerVault<T, IthacaType>) {
-    assert!(minimum_stake_amount > 0, ENotZeroAmount);
-
+fun init(ctx: &mut TxContext) {
     let admin_cap = MakerVaultAdminCap {
         id: object::new(ctx),
     };
+    transfer::transfer(
+        admin_cap,
+        ctx.sender()
+    )   
+}
+
+// === Public Functions ===
+
+/// Initialize a new maker vault
+/// Returns order capability
+public fun initialize<T, IthacaType>(
+    admin_cap: &MakerVaultAdminCap,
+    minimum_stake_amount: u64,
+    ctx: &mut TxContext
+): (MakerOrderCap) {
+    assert!(minimum_stake_amount > 0, ENotZeroAmount);
     
     let order_cap = MakerOrderCap {
         id: object::new(ctx),
@@ -118,6 +145,8 @@ public fun initialize<T, IthacaType>(
 
     let vault = MakerVault<T, IthacaType> {
         id: object::new(ctx),
+        version: VERSION,
+        admin: object::id(admin_cap),
         makers: table::new(ctx),
         minimum_stake_amount,
         custom_min_stake_amounts: table::new(ctx),
@@ -125,7 +154,9 @@ public fun initialize<T, IthacaType>(
         ithaca_balance: balance::zero<IthacaType>(),
     };
 
-    (admin_cap, order_cap, vault)
+    transfer::share_object(vault);
+
+    (order_cap)
 }
 
 /// Register as a maker by staking Ithaca tokens
@@ -134,6 +165,8 @@ public fun register_maker<T, IthacaType>(
     ithaca_payment: Coin<IthacaType>,
     ctx: &mut TxContext
 ) {
+    assert!(vault.version == VERSION, EWrongVersion);
+    
     let sender = tx_context::sender(ctx);
     let stake_amount = coin::value(&ithaca_payment);
     
@@ -161,6 +194,8 @@ public fun unregister_maker<T, IthacaType>(
     vault: &mut MakerVault<T, IthacaType>,
     ctx: &mut TxContext
 ): Coin<IthacaType> {
+    assert!(vault.version == VERSION, EWrongVersion);
+    
     let sender = tx_context::sender(ctx);
     
     assert!(table::contains(&vault.makers, sender), EMakerNotAvailable);
@@ -195,6 +230,8 @@ public fun deposit_collateral<T, IthacaType>(
     payment: Coin<T>,
     ctx: &mut TxContext
 ) {
+    assert!(vault.version == VERSION, EWrongVersion);
+    
     let sender = tx_context::sender(ctx);
     let amount = coin::value(&payment);
     
@@ -234,6 +271,7 @@ public fun withdraw_collateral<T, IthacaType>(
     amount: u64,
     ctx: &mut TxContext
 ): Coin<T> {
+    assert!(vault.version == VERSION, EWrongVersion);
     assert!(amount > 0, ENotZeroAmount);
     assert!(table::contains(&vault.makers, maker), EMakerNotAvailable);
 
@@ -265,6 +303,8 @@ public fun stake_ithaca<T, IthacaType>(
     ithaca_payment: Coin<IthacaType>,
     ctx: &mut TxContext
 ) {
+    assert!(vault.version == VERSION, EWrongVersion);
+    
     let sender = tx_context::sender(ctx);
     let amount = coin::value(&ithaca_payment);
     
@@ -287,12 +327,20 @@ public fun stake_ithaca<T, IthacaType>(
 
 // === Admin Functions ===
 
+/// Migrate maker vault to new version (admin only)
+entry fun migrate<T, IthacaType>(vault: &mut MakerVault<T, IthacaType>, admin_cap: &MakerVaultAdminCap) {
+    assert!(vault.admin == object::id(admin_cap), ENotAdmin);
+    assert!(vault.version < VERSION, ENotUpgrade);
+    vault.version = VERSION;
+}
+
 /// Set minimum stake amount (admin only)
 public fun set_minimum_stake_amount<T, IthacaType>(
     _: &MakerVaultAdminCap,
     vault: &mut MakerVault<T, IthacaType>,
     amount: u64,
 ) {
+    assert!(vault.version == VERSION, EWrongVersion);
     vault.minimum_stake_amount = amount;
 
     event::emit(MinimumStakeAmountSet {
@@ -307,6 +355,8 @@ public fun set_custom_min_stake_amount<T, IthacaType>(
     tradable_asset: TradableAsset,
     amount: u64,
 ) {
+    assert!(vault.version == VERSION, EWrongVersion);
+    
     if (table::contains(&vault.custom_min_stake_amounts, tradable_asset)) {
         table::remove(&mut vault.custom_min_stake_amounts, tradable_asset);
     };
@@ -328,6 +378,7 @@ public fun transfer_to_taker_vault<T, IthacaType>(
     amount: u64,
     ctx: &mut TxContext
 ): Coin<T> {
+    assert!(vault.version == VERSION, EWrongVersion);
     let transfer_balance = balance::split(&mut vault.collateral_balance, amount);
     coin::from_balance(transfer_balance, ctx)
 }
@@ -341,6 +392,7 @@ public fun adjust_maker_balance<T, IthacaType>(
     amount: u64,
     is_win: bool,
 ) {
+    assert!(vault.version == VERSION, EWrongVersion);
     assert!(table::contains(&vault.makers, maker), EMakerNotAvailable);
     
     let maker_info = table::borrow_mut(&mut vault.makers, maker);
@@ -363,6 +415,7 @@ public fun transfer_fee_to_treasury<T, IthacaType>(
     fee: u64,
     ctx: &mut TxContext
 ): Coin<T> {
+    assert!(vault.version == VERSION, EWrongVersion);
     assert!(table::contains(&vault.makers, maker), EMakerNotAvailable);
     
     // Reduce maker collateral
@@ -381,6 +434,7 @@ public fun add_funds<T, IthacaType>(
     vault: &mut MakerVault<T, IthacaType>,
     payment: Coin<T>,
 ) {
+    assert!(vault.version == VERSION, EWrongVersion);
     let payment_balance = coin::into_balance(payment);
     balance::join(&mut vault.collateral_balance, payment_balance);
     // Note: collateral balance is automatically updated via balance::join
@@ -424,6 +478,7 @@ public fun get_withdrawable_balance_with_locked<T, IthacaType>(
     tradable_asset: &TradableAsset,
     locked_amount: u64
 ): u64 {
+    assert!(vault.version == VERSION, EWrongVersion);
     let total_collateral = get_maker_collateral(vault, maker, tradable_asset);
     if (total_collateral >= locked_amount) {
         total_collateral - locked_amount
