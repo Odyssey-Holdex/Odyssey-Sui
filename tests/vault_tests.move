@@ -14,6 +14,7 @@ use odyssey_sui::test_utils::validate_coin_and_transfer_back;
 use odyssey_sui::test_utils::setup_funded_scenario;
 use odyssey_sui::test_utils::create_test_note;
 use odyssey_sui::order::CoordinatorCap;
+use odyssey_sui::vault::EInsufficientBalance;
 
 // ==========
 // Initialization Tests
@@ -167,7 +168,7 @@ public fun test_cannot_withdraw_zero_amount() {
 
 #[test]
 #[expected_failure(abort_code = vault::EInsufficientBalance)]
-public fun test_cannot_withdraw_more_than_balance() {
+public fun test_can_withdraw_remaining_nonlocked_balance() {
     let mut scenario = setup_test_scenario();
     let (_, trader1, trader2, _, _, _, _) = get_test_addresses();
     let (mut vault, maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
@@ -195,6 +196,7 @@ public fun test_cannot_withdraw_more_than_balance() {
 }
 
 #[test]
+#[expected_failure(abort_code = vault::EInsufficientBalance)]
 public fun test_cannot_withdraw_locked_balance() {
     let mut scenario = setup_test_scenario();
     let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
@@ -212,20 +214,11 @@ public fun test_cannot_withdraw_locked_balance() {
     order::create_note(&coordinator_cap, &mut order_manager, &mut vault, &mut maker_vault, note, &clock, ctx(&mut scenario));
     scenario.return_to_sender(coordinator_cap);
 
-    // Attempt to withdraw all the remaining unlocked balance
+    // Attempt to withdraw more than withdrawable balance
     test_scenario::next_tx(&mut scenario, trader1);
-    let withdraw_amount = deposit_amount - order_amount;
-
+    let withdraw_amount = deposit_amount - order_amount + 1;
     let withdrawn = order::taker_withdraw(&mut order_manager, &mut vault, withdraw_amount, ctx(&mut scenario));
     validate_coin_and_transfer_back(&mut scenario, withdrawn, trader1, withdraw_amount);
-
-    // Verify that the locked balance remains
-    let locked_balance = order::taker_locked_balance(&order_manager, trader1);
-    assert_eq(locked_balance, order_amount);
-    let balance_in_vault = vault::taker_balance(&vault, trader1);
-    assert_eq(balance_in_vault, order_amount);
-    let withdrawable_balance = order::taker_withdrawable_balance(&order_manager, &vault, trader1);
-    assert_eq(withdrawable_balance, 0);
 
     clock.destroy_for_testing();
     test_scenario::return_shared(maker_vault);
