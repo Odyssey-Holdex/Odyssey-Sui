@@ -124,6 +124,28 @@ public fun test_cannot_register_below_minimum_stake() {
     cleanup_scenario(scenario)
 }
 
+
+#[test]
+#[expected_failure(abort_code = maker_vault::EMakerAlreadyRegistered)]
+public fun test_cannot_register_twice() {
+    let mut scenario = setup_test_scenario();
+    let (_, _, _, maker1, _, _, _) = get_test_addresses();
+    let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
+    transfer::public_transfer(maker_order_cap, maker1);
+
+    let stake_amount = 200_000_000;
+    // First registration succeeds
+    register_test_maker(&mut scenario, &mut maker_vault, maker1, stake_amount);
+
+    // Second registration should abort with EMakerAlreadyRegistered
+    test_scenario::next_tx(&mut scenario, maker1);
+    let ithaca_again = mint_ithaca(&mut scenario, maker1, stake_amount);
+    maker_vault::register_maker(&mut maker_vault, ithaca_again, ctx(&mut scenario));
+
+    test_scenario::return_shared(maker_vault);
+    cleanup_scenario(scenario)
+}
+
 #[test]
 public fun test_unregister_success() {
     let mut scenario = setup_test_scenario();
@@ -401,3 +423,4 @@ public fun test_get_withdrawable_balance_with_locked_view() {
     test_scenario::return_shared(maker_vault);
     cleanup_scenario(scenario)
 }
+
