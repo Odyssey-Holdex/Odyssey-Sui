@@ -14,7 +14,6 @@ use odyssey_sui::test_utils::validate_coin_and_transfer_back;
 use odyssey_sui::test_utils::setup_funded_scenario;
 use odyssey_sui::test_utils::create_test_note;
 use odyssey_sui::order::CoordinatorCap;
-use odyssey_sui::vault::EInsufficientBalance;
 
 // ==========
 // Initialization Tests
