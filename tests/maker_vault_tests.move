@@ -25,6 +25,10 @@ use odyssey_sui::test_utils::{
 use odyssey_sui::types;
 use odyssey_sui::order;
 use odyssey_sui::order::CoordinatorCap;
+use odyssey_sui::test_utils::get_minimum_stake;
+use odyssey_sui::vault;
+use odyssey_sui::maker_vault::deposit_collateral;
+use odyssey_sui::test_utils::deposit_trader_funds;
 
 
 // ==========
@@ -76,7 +80,7 @@ public fun test_register_maker_success() {
     let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
     transfer::public_transfer(maker_order_cap, maker1);
 
-    let stake_amount = 200_000_000; // matches default in setup_maker_vault
+    let stake_amount = get_minimum_stake(); // matches default in setup_maker_vault
     register_test_maker(&mut scenario, &mut maker_vault, maker1, stake_amount);
     maker_vault::assert_maker_registered_event(maker1, stake_amount);
 
@@ -133,7 +137,7 @@ public fun test_cannot_register_twice() {
     let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
     transfer::public_transfer(maker_order_cap, maker1);
 
-    let stake_amount = 200_000_000;
+    let stake_amount = get_minimum_stake();
     // First registration succeeds
     register_test_maker(&mut scenario, &mut maker_vault, maker1, stake_amount);
 
@@ -141,56 +145,6 @@ public fun test_cannot_register_twice() {
     test_scenario::next_tx(&mut scenario, maker1);
     let ithaca_again = mint_ithaca(&mut scenario, maker1, stake_amount);
     maker_vault::register_maker(&mut maker_vault, ithaca_again, ctx(&mut scenario));
-
-    test_scenario::return_shared(maker_vault);
-    cleanup_scenario(scenario)
-}
-
-#[test]
-public fun test_unregister_success() {
-    let mut scenario = setup_test_scenario();
-    let (_, _, _, maker1, _, _, _) = get_test_addresses();
-    let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
-    transfer::public_transfer(maker_order_cap, maker1);
-
-    let stake_amount = 200_000_000;
-    register_test_maker(&mut scenario, &mut maker_vault, maker1, stake_amount);
-
-    // Unregister should return all staked ITHACA and clear maker entry
-    test_scenario::next_tx(&mut scenario, maker1);
-    let withdrawn = maker_vault::unregister_maker(&mut maker_vault, ctx(&mut scenario));
-    maker_vault::assert_maker_unregistered_event(maker1);
-    let value = sui::coin::value(&withdrawn);
-    assert_eq(value, stake_amount);
-    transfer::public_transfer(withdrawn, maker1);
-
-    test_scenario::next_tx(&mut scenario, maker1);
-    let staked_after = maker_vault::get_maker_info(&maker_vault, maker1);
-    assert_eq(staked_after, 0);
-
-    test_scenario::return_shared(maker_vault);
-    cleanup_scenario(scenario)
-}
-
-#[test]
-#[expected_failure(abort_code = maker_vault::ECollateralMustBeZero)]
-public fun test_cannot_unregister_with_nonzero_collateral() {
-    let mut scenario = setup_test_scenario();
-    let (governor, _, _, maker1, _, _, _) = get_test_addresses();
-    let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
-    transfer::public_transfer(maker_order_cap, governor);
-
-    let stake_amount = 200_000_000;
-    register_test_maker(&mut scenario, &mut maker_vault, maker1, stake_amount);
-
-    // Deposit some collateral so unregister fails
-    let deposit_amount = 1_000_000;
-    deposit_maker_collateral(&mut scenario, &mut maker_vault, maker1, types::tradable_asset_btc(), deposit_amount);
-
-    test_scenario::next_tx(&mut scenario, maker1);
-    let withdrawn = maker_vault::unregister_maker(&mut maker_vault, ctx(&mut scenario));
-    // ensure type checker sees the coin (unreachable due to abort)
-    transfer::public_transfer(withdrawn, maker1);
 
     test_scenario::return_shared(maker_vault);
     cleanup_scenario(scenario)
@@ -206,7 +160,7 @@ public fun test_deposit_collateral_success() {
     let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
     transfer::public_transfer(maker_order_cap, maker1);
 
-    let stake_amount = 200_000_000;
+    let stake_amount = get_minimum_stake();
     register_test_maker(&mut scenario, &mut maker_vault, maker1, stake_amount);
 
     let amount = 1_500_000;
@@ -232,7 +186,7 @@ public fun test_cannot_deposit_zero_amount() {
     let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
     transfer::public_transfer(maker_order_cap, governor);
 
-    let stake_amount = 200_000_000;
+    let stake_amount = get_minimum_stake();
     register_test_maker(&mut scenario, &mut maker_vault, maker1, stake_amount);
 
     test_scenario::next_tx(&mut scenario, maker1);
@@ -261,16 +215,49 @@ public fun test_cannot_deposit_without_registration() {
 }
 
 // ==========
+// Stake Ithaca Tests
+// ==========
+/**
+TODO:
+1. success stake
+2. Only called by maker
+3. cannot stake 0
+*/
+
+// ==========
+// Set Minimum Stake Tests
+// ==========
+
+/**
+TODO:
+1. success
+2. only called by governor
+*/
+
+// ==========
+// Set Custom Minimum Stake Tests
+// ==========
+/**
+TODO:
+1. success
+2. only called by governor
+3. cannot deposit collateral if maker's stake is less than custom minimum stake, but more than default minimum stake
+4. same case as 3, but check that the maker can still deposit for other tradable assets
+*/
+
+// ==========
 // Collateral Withdraw Tests
 // ==========
 #[test]
 public fun test_withdraw_collateral_success() {
     let mut scenario = setup_test_scenario();
     let (_, _, _, maker1, _, _, _) = get_test_addresses();
-    let (mut vault_unused, mut maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
+    let (vault_unused, mut maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
+
+    // TODO: validate that the total_asset_available before => after is correct
 
     // Ensure maker registered and deposit collateral
-    let stake_amount = 200_000_000;
+    let stake_amount = get_minimum_stake();
     register_test_maker(&mut scenario, &mut maker_vault, maker1, stake_amount);
     let deposit_amount = 10_000;
     deposit_maker_collateral(&mut scenario, &mut maker_vault, maker1, types::tradable_asset_btc(), deposit_amount);
@@ -299,9 +286,9 @@ public fun test_withdraw_collateral_success() {
 public fun test_cannot_withdraw_zero_amount() {
     let mut scenario = setup_test_scenario();
     let (_, _, _, maker1, _, _, _) = get_test_addresses();
-    let (mut vault_unused, mut maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
+    let (vault_unused, mut maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
 
-    let stake_amount = 200_000_000;
+    let stake_amount = get_minimum_stake();
     register_test_maker(&mut scenario, &mut maker_vault, maker1, stake_amount);
     let deposit_amount = 5_000;
     deposit_maker_collateral(&mut scenario, &mut maker_vault, maker1, types::tradable_asset_btc(), deposit_amount);
@@ -317,14 +304,16 @@ public fun test_cannot_withdraw_zero_amount() {
     cleanup_scenario(scenario)
 }
 
+// TODO: add cannot withdraw if not registered as maker
+
 #[test]
 #[expected_failure(abort_code = maker_vault::EInsufficientCollateral)]
 public fun test_cannot_withdraw_more_than_available() {
     let mut scenario = setup_test_scenario();
     let (_, _, _, maker1, _, _, _) = get_test_addresses();
-    let (mut vault_unused, mut maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
+    let (vault_unused, mut maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
 
-    let stake_amount = 200_000_000;
+    let stake_amount = get_minimum_stake();
     register_test_maker(&mut scenario, &mut maker_vault, maker1, stake_amount);
     let deposit_amount = 7_000;
     deposit_maker_collateral(&mut scenario, &mut maker_vault, maker1, types::tradable_asset_btc(), deposit_amount);
@@ -341,9 +330,6 @@ public fun test_cannot_withdraw_more_than_available() {
     cleanup_scenario(scenario)
 }
 
-// ==========
-// Locked Balance Behavior (via create_note)
-// ==========
 #[test]
 #[expected_failure(abort_code = maker_vault::EInsufficientCollateral)]
 public fun test_cannot_withdraw_locked_balance() {
@@ -354,12 +340,7 @@ public fun test_cannot_withdraw_locked_balance() {
     // Create a note to lock maker balance
     test_scenario::next_tx(&mut scenario, trader1);
     let amount = 1_000;
-    // Ensure trader has funds in taker vault
-    {
-        // deposit into taker vault for trader1
-        let usdc = mint_usdc(&mut scenario, trader1, amount);
-        odyssey_sui::vault::deposit(&mut vault, usdc, ctx(&mut scenario));
-    };
+    deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let order_amount = 300;
@@ -381,6 +362,64 @@ public fun test_cannot_withdraw_locked_balance() {
     cleanup_scenario(scenario)
 }
 
+// TODO: same as above, but success withdraw all the remaining balance
+
+// ==========
+// Unregister Maker
+// ==========
+
+#[test]
+public fun test_unregister_success() {
+    let mut scenario = setup_test_scenario();
+    let (_, _, _, maker1, _, _, _) = get_test_addresses();
+    let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
+    transfer::public_transfer(maker_order_cap, maker1);
+
+    let stake_amount = get_minimum_stake();
+    register_test_maker(&mut scenario, &mut maker_vault, maker1, stake_amount);
+
+    // Unregister should return all staked ITHACA and clear maker entry
+    test_scenario::next_tx(&mut scenario, maker1);
+    let withdrawn = maker_vault::unregister_maker(&mut maker_vault, ctx(&mut scenario));
+    maker_vault::assert_maker_unregistered_event(maker1);
+    let value = sui::coin::value(&withdrawn);
+    assert_eq(value, stake_amount);
+    transfer::public_transfer(withdrawn, maker1);
+
+    test_scenario::next_tx(&mut scenario, maker1);
+    let staked_after = maker_vault::get_maker_info(&maker_vault, maker1);
+    assert_eq(staked_after, 0);
+
+    test_scenario::return_shared(maker_vault);
+    cleanup_scenario(scenario)
+}
+
+#[test]
+#[expected_failure(abort_code = maker_vault::ECollateralMustBeZero)]
+public fun test_cannot_unregister_with_nonzero_collateral() {
+    let mut scenario = setup_test_scenario();
+    let (governor, _, _, maker1, _, _, _) = get_test_addresses();
+    let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
+    transfer::public_transfer(maker_order_cap, governor);
+
+    let stake_amount = get_minimum_stake();
+    register_test_maker(&mut scenario, &mut maker_vault, maker1, stake_amount);
+
+    // Deposit some collateral so unregister fails
+    let deposit_amount = 1_000_000;
+    deposit_maker_collateral(&mut scenario, &mut maker_vault, maker1, types::tradable_asset_btc(), deposit_amount);
+
+    test_scenario::next_tx(&mut scenario, maker1);
+    let withdrawn = maker_vault::unregister_maker(&mut maker_vault, ctx(&mut scenario));
+    // ensure type checker sees the coin (unreachable due to abort)
+    transfer::public_transfer(withdrawn, maker1);
+
+    test_scenario::return_shared(maker_vault);
+    cleanup_scenario(scenario)
+}
+
+// TODO: same as above, but success unregister after withdrawing all collateral
+
 // ==========
 // Views
 // ==========
@@ -390,7 +429,7 @@ public fun test_get_withdrawable_balance_with_locked_view() {
     let (governor, _, _, maker1, _, _, _) = get_test_addresses();
     let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
 
-    let stake_amount = 200_000_000;
+    let stake_amount = get_minimum_stake();
     register_test_maker(&mut scenario, &mut maker_vault, maker1, stake_amount);
 
     let deposit_amount = 9_000;

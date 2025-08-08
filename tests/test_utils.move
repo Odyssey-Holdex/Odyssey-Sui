@@ -285,6 +285,11 @@ public fun validate_coin_and_transfer_back(
     transfer::public_transfer(coin, recipient);
 }
 
+#[test_only]
+public fun get_minimum_stake(): u64 {
+    MINIMUM_STAKE
+}
+
 /// Advance clock time
 #[test_only]
 public fun advance_time(clock: &mut Clock, ms: u64) {
@@ -313,4 +318,4 @@ public fun timestamp_plus_hours(clock: &Clock, hours: u64): u64 {
 #[test_only]
 public fun cleanup_scenario(scenario: Scenario) {
     test_scenario::end(scenario);
-} 
+}
