@@ -1,11 +1,11 @@
 /// Maker Vault module for managing maker liquidity, staking, and collateral
-module trading_vault::maker_vault;
+module odyssey_sui::maker_vault;
 
 use sui::coin::{Self, Coin};
 use sui::balance::{Self, Balance};
 use sui::table::{Self, Table};
 use sui::event;
-use trading_vault::types::{Self, TradableAsset, MakerInfo};
+use odyssey_sui::types::{Self, TradableAsset, MakerInfo};
 
 // === Constants ===
 
@@ -526,4 +526,80 @@ public fun minimum_stake_amount<T, IthacaType>(
 ): u64 {
     vault.minimum_stake_amount
 }
- 
+
+
+// --------------------
+// === Test Helpers ===
+// --------------------
+#[test_only]
+use sui::test_utils::assert_eq;
+
+#[test_only]
+public fun test_init(ctx: &mut TxContext) {
+    init(ctx)
+}
+
+#[test_only]
+public fun assert_maker_registered_event(
+    maker: address,
+    stake_amount: u64,
+) {
+    let emitted = event::events_by_type<MakerRegistered>()[0];
+    assert_eq(emitted.maker, maker);
+    assert_eq(emitted.stake_amount, stake_amount);
+}
+
+#[test_only]
+public fun assert_maker_unregistered_event(
+    maker: address,
+) {
+    let emitted = event::events_by_type<MakerUnregistered>()[0];
+    assert_eq(emitted.maker, maker);
+}
+
+#[test_only]
+public fun assert_collateral_deposited_event(
+    maker: address,
+    amount: u64,
+) {
+    let emitted = event::events_by_type<CollateralDeposited>()[0];
+    assert_eq(emitted.maker, maker);
+    assert_eq(emitted.amount, amount);
+}
+
+#[test_only]
+public fun assert_collateral_withdrawn_event(
+    maker: address,
+    amount: u64,
+) {
+    let emitted = event::events_by_type<CollateralWithdrawn>()[0];
+    assert_eq(emitted.maker, maker);
+    assert_eq(emitted.amount, amount);
+}
+
+#[test_only]
+public fun assert_ithaca_staked_event(
+    maker: address,
+    amount: u64,
+) {
+    let emitted = event::events_by_type<IthacaStaked>()[0];
+    assert_eq(emitted.maker, maker);
+    assert_eq(emitted.amount, amount);
+}
+
+#[test_only]
+public fun assert_minimum_stake_amount_set_event(
+    amount: u64,
+) {
+    let emitted = event::events_by_type<MinimumStakeAmountSet>()[0];
+    assert_eq(emitted.amount, amount);
+}
+
+#[test_only]
+public fun assert_custom_min_stake_amount_set_event(
+    amount: u64,
+) {
+    let emitted = event::events_by_type<CustomMinStakeAmountSet>()[0];
+    assert_eq(emitted.amount, amount);
+}
+

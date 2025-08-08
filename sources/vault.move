@@ -1,5 +1,5 @@
 /// Vault module for managing trader deposits, withdrawals, and balances
-module trading_vault::vault;
+module odyssey_sui::vault;
 
 use sui::coin::{Self, Coin};
 use sui::balance::{Self, Balance};
@@ -98,7 +98,7 @@ public fun initialize<T>(admin_cap: &VaultAdminCap, ctx: &mut TxContext): (Order
 
     transfer::share_object(vault);
 
-    (order_cap);
+    order_cap
 }
 
 
@@ -310,4 +310,35 @@ public fun validate_amount(amount: u64) {
 /// Validate that address is not zero
 public fun validate_address(addr: address) {
     assert!(addr != @0x0, ENotZeroAddress);
+}
+
+// --------------------
+// === Test Helpers ===
+// --------------------
+#[test_only]
+use sui::test_utils::assert_eq;
+
+#[test_only]
+public fun test_init(ctx: &mut TxContext) {
+    init(ctx);
+}
+
+#[test_only]
+public fun assert_deposited_event(
+    taker: address,
+    amount: u64
+) {
+    let emitted = event::events_by_type<Deposited>()[0];
+    assert_eq(emitted.trader, taker);
+    assert_eq(emitted.amount, amount);
+}
+
+#[test_only]
+public fun assert_withdrawn_event(
+    taker: address,
+    amount: u64
+) {
+    let emitted = event::events_by_type<Withdrawn>()[0];
+    assert_eq(emitted.trader, taker);
+    assert_eq(emitted.amount, amount);
 }

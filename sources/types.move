@@ -1,5 +1,5 @@
 /// Types module containing shared data structures for the trading vault system
-module trading_vault::types;
+module odyssey_sui::types;
 
 use std::string::String;
 

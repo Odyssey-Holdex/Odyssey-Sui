@@ -44,7 +44,7 @@ sui client publish --gas-budget 20000000
 ### **Initialize the System**
 
 ```move
-use trading_vault::example;
+use odyssey_sui::example;
 
 // Initialize vault and order manager
 let (vault_admin_cap, order_admin_cap, vault, order_manager) =

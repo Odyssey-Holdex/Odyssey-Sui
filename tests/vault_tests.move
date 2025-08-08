@@ -1,358 +1,227 @@
 #[test_only]
-module trading_vault::vault_tests;
+module odyssey_sui::vault_tests;
 
-use sui::test_scenario::{Self, Scenario, ctx};
-use sui::coin::{Self, Coin};
-use trading_vault::vault::{Self, Vault, VaultAdminCap, OrderCap};
-use trading_vault::test_utils::{Self, USDC, setup_test_scenario, mint_usdc, get_test_addresses, cleanup_scenario};
+use sui::test_scenario::{Self, ctx};
+use odyssey_sui::vault::{Self};
+use odyssey_sui::test_utils::{setup_test_scenario, mint_usdc, get_test_addresses, cleanup_scenario};
+use odyssey_sui::test_utils::setup_vault;
+use sui::test_utils::assert_eq;
+use odyssey_sui::test_utils::deposit_trader_funds;
+use odyssey_sui::test_utils::setup_complete_system;
+use std::option::none;
+use odyssey_sui::order;
+use odyssey_sui::test_utils::validate_coin_and_transfer_back;
+use odyssey_sui::test_utils::setup_funded_scenario;
+use odyssey_sui::test_utils::create_test_note;
+use odyssey_sui::order::CoordinatorCap;
 
+// ==========
+// Initialization Tests
+// ==========
 #[test]
-fun test_initialize_vault() {
+public fun test_initialize_success() {
     let mut scenario = setup_test_scenario();
-    let (governor, trader_1, _, _, _, _, _) = get_test_addresses();
-    
-    test_scenario::next_tx(&mut scenario, governor);
-    let (vault_admin_cap, order_cap, vault) = vault::initialize<USDC>(ctx(&mut scenario));
-    
-    // Test that vault was initialized correctly
-    assert!(vault::total_asset_available(&vault) == 0);
-    
-    // Transfer objects for cleanup
-    test_scenario::next_tx(&mut scenario, governor);
-    transfer::public_transfer(vault_admin_cap, governor);
+    let (governor, _, _, _, _, _, _) = get_test_addresses();
+    let (vault, order_cap) = setup_vault(&mut scenario);
     transfer::public_transfer(order_cap, governor);
-    transfer::public_share_object(vault);
-    
-    cleanup_scenario(scenario);
+
+    // Verify vault initialization
+    test_scenario::next_tx(&mut scenario, governor);
+    let total_asset = vault::total_asset_available(&vault);
+    assert_eq(total_asset, 0);
+
+    test_scenario::return_shared(vault);
+
+    cleanup_scenario(scenario)
 }
 
+// ==========
+// Deposit Tests
+// ==========
 #[test]
-fun test_deposit_success() {
+public fun test_deposit_success() {
     let mut scenario = setup_test_scenario();
-    let (governor, trader_1, _, _, _, _, _) = get_test_addresses();
-    
-    // Setup vault
-    test_scenario::next_tx(&mut scenario, governor);
-    let (vault_admin_cap, order_cap, mut vault) = vault::initialize<USDC>(ctx(&mut scenario));
-    
-    // Mint and deposit USDC
-    let deposit_amount = 1_000_000; // 1 USDC (6 decimals)
-    let usdc_coin = mint_usdc(&mut scenario, trader_1, deposit_amount);
-    
-    test_scenario::next_tx(&mut scenario, trader_1);
+    let (governor, trader1, _, _, _, _, _) = get_test_addresses();
+    let (mut vault, order_cap) = setup_vault(&mut scenario);
+    transfer::public_transfer(order_cap, governor);
+
+    // Mint USDC and deposit into vault
+    let amount = 1000;
+    test_scenario::next_tx(&mut scenario, trader1);
+    let usdc_coin = mint_usdc(&mut scenario, trader1, amount);
     vault::deposit(&mut vault, usdc_coin, ctx(&mut scenario));
-    
+    vault::assert_deposited_event(trader1, amount);
+
     // Verify deposit
-    assert!(vault::total_asset_available(&vault) == deposit_amount);
-    assert!(vault::taker_balance(&vault, trader_1) == deposit_amount);
-    
-    // Cleanup
-    test_scenario::next_tx(&mut scenario, governor);
-    transfer::public_transfer(vault_admin_cap, governor);
-    transfer::public_transfer(order_cap, governor);
-    transfer::public_share_object(vault);
-    
-    cleanup_scenario(scenario);
+    test_scenario::next_tx(&mut scenario, trader1);
+    let total_asset = vault::total_asset_available(&vault);
+    assert_eq(total_asset, amount);
+    let balance = vault::taker_balance(&vault, trader1);
+    assert_eq(balance, amount);
+
+    test_scenario::return_shared(vault);
+    cleanup_scenario(scenario)
 }
+
 
 #[test]
 #[expected_failure(abort_code = vault::ENotZeroAmount)]
-fun test_deposit_zero_amount_fails() {
+public fun test_cannot_deposit_zero_amount() {
     let mut scenario = setup_test_scenario();
-    let (governor, trader_1, _, _, _, _, _) = get_test_addresses();
-    
-    // Setup vault
-    test_scenario::next_tx(&mut scenario, governor);
-    let (vault_admin_cap, order_cap, mut vault) = vault::initialize<USDC>(ctx(&mut scenario));
-    
-    // Try to deposit zero amount
-    let zero_coin = coin::zero<USDC>(ctx(&mut scenario));
-    
-    test_scenario::next_tx(&mut scenario, trader_1);
-    vault::deposit(&mut vault, zero_coin, ctx(&mut scenario)); // Should fail
-    
-    // Cleanup
-    test_scenario::next_tx(&mut scenario, governor);
-    transfer::public_transfer(vault_admin_cap, governor);
+    let (governor, trader1, _, _, _, _, _) = get_test_addresses();
+    let (mut vault, order_cap) = setup_vault(&mut scenario);
     transfer::public_transfer(order_cap, governor);
-    transfer::public_share_object(vault);
-    
-    cleanup_scenario(scenario);
-}
 
-#[test]
-fun test_multiple_deposits() {
-    let mut scenario = setup_test_scenario();
-    let (governor, trader_1, trader_2, _, _, _, _) = get_test_addresses();
-    
-    // Setup vault
-    test_scenario::next_tx(&mut scenario, governor);
-    let (vault_admin_cap, order_cap, mut vault) = vault::initialize<USDC>(ctx(&mut scenario));
-    
-    // Multiple deposits from trader_1
-    let deposit_1 = 1_000_000; // 1 USDC
-    let deposit_2 = 500_000;   // 0.5 USDC
-    
-    let usdc_coin_1 = mint_usdc(&mut scenario, trader_1, deposit_1);
-    test_scenario::next_tx(&mut scenario, trader_1);
-    vault::deposit(&mut vault, usdc_coin_1, ctx(&mut scenario));
-    
-    let usdc_coin_2 = mint_usdc(&mut scenario, trader_1, deposit_2);
-    test_scenario::next_tx(&mut scenario, trader_1);
-    vault::deposit(&mut vault, usdc_coin_2, ctx(&mut scenario));
-    
-    // Deposit from trader_2
-    let deposit_3 = 2_000_000; // 2 USDC
-    let usdc_coin_3 = mint_usdc(&mut scenario, trader_2, deposit_3);
-    test_scenario::next_tx(&mut scenario, trader_2);
-    vault::deposit(&mut vault, usdc_coin_3, ctx(&mut scenario));
-    
-    // Verify balances
-    assert!(vault::taker_balance(&vault, trader_1) == deposit_1 + deposit_2);
-    assert!(vault::taker_balance(&vault, trader_2) == deposit_3);
-    assert!(vault::total_asset_available(&vault) == deposit_1 + deposit_2 + deposit_3);
-    
-    // Cleanup
-    test_scenario::next_tx(&mut scenario, governor);
-    transfer::public_transfer(vault_admin_cap, governor);
-    transfer::public_transfer(order_cap, governor);
-    transfer::public_share_object(vault);
-    
-    cleanup_scenario(scenario);
-}
+    // Attempt to deposit zero amount
+    test_scenario::next_tx(&mut scenario, trader1);
+    let usdc_coin = mint_usdc(&mut scenario, trader1, 0);
 
-#[test]
-fun test_withdraw_success() {
-    let mut scenario = setup_test_scenario();
-    let (governor, trader_1, _, _, _, _, _) = get_test_addresses();
-    
-    // Setup vault with deposit
-    test_scenario::next_tx(&mut scenario, governor);
-    let (vault_admin_cap, order_cap, mut vault) = vault::initialize<USDC>(ctx(&mut scenario));
-    
-    let deposit_amount = 1_000_000; // 1 USDC
-    let usdc_coin = mint_usdc(&mut scenario, trader_1, deposit_amount);
-    
-    test_scenario::next_tx(&mut scenario, trader_1);
     vault::deposit(&mut vault, usdc_coin, ctx(&mut scenario));
-    
-    // Withdraw portion
-    let withdraw_amount = 600_000; // 0.6 USDC
-    let locked_amount = 0; // No locked funds
-    
-    test_scenario::next_tx(&mut scenario, trader_1);
-    let withdrawn_coin = vault::withdraw(&order_cap, &mut vault, trader_1, withdraw_amount, locked_amount, ctx(&mut scenario));
-    
-    // Verify withdrawal
-    assert!(coin::value(&withdrawn_coin) == withdraw_amount);
-    assert!(vault::taker_balance(&vault, trader_1) == deposit_amount - withdraw_amount);
-    assert!(vault::total_asset_available(&vault) == deposit_amount - withdraw_amount);
-    
-    // Cleanup
-    coin::burn_for_testing(withdrawn_coin);
-    test_scenario::next_tx(&mut scenario, governor);
-    transfer::public_transfer(vault_admin_cap, governor);
-    transfer::public_transfer(order_cap, governor);
-    transfer::public_share_object(vault);
-    
-    cleanup_scenario(scenario);
+
+    test_scenario::return_shared(vault);
+    cleanup_scenario(scenario)
 }
+
+// ==========
+// Withdraw Tests
+// ==========
+#[test]
+public fun test_withdraw_success() {
+    let mut scenario = setup_test_scenario();
+    let (_, trader1, trader2, _, _, _, _) = get_test_addresses();
+    let (mut vault, maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
+    test_scenario::return_shared(maker_vault);
+
+    // Mint USDC and deposit into vault
+    let amount = 1000;
+    let amount2 = 1500;
+    deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
+    deposit_trader_funds(&mut scenario, &mut vault, trader2, amount2);
+
+    let total_asset_before = vault::total_asset_available(&vault);
+    assert_eq(total_asset_before, amount + amount2);
+
+    // Withdraw from vault, not all balance
+    test_scenario::next_tx(&mut scenario, trader1);
+    let withdraw_amount = 800;
+    let withdrawn_coin = order::taker_withdraw(&mut order_manager, &mut vault, withdraw_amount, ctx(&mut scenario));
+    vault::assert_withdrawn_event(trader1, withdraw_amount);
+
+    let total_asset = vault::total_asset_available(&vault);
+    assert_eq(total_asset, total_asset_before - withdraw_amount);
+    let balance = vault::taker_balance(&vault, trader1);
+    assert_eq(balance, amount - withdraw_amount);
+    let balance2 = vault::taker_balance(&vault, trader2);
+    assert_eq(balance2, amount2);
+
+    // Verify the withdrawn coin
+    validate_coin_and_transfer_back(&mut scenario, withdrawn_coin, trader1, withdraw_amount);
+
+    // Withdraw from vault, all balance
+    test_scenario::next_tx(&mut scenario, trader2);
+    let withdraw_amount = amount2;
+    let withdrawn_coin = order::taker_withdraw(&mut order_manager, &mut vault, withdraw_amount, ctx(&mut scenario));
+    vault::assert_withdrawn_event(trader2, withdraw_amount);
+    let total_asset_after = vault::total_asset_available(&vault);
+    assert_eq(total_asset_after, total_asset - withdraw_amount);
+    let balance2_after = vault::taker_balance(&vault, trader2);
+    assert_eq(balance2_after, 0);
+
+    // Verify the withdrawn coin
+    validate_coin_and_transfer_back(&mut scenario, withdrawn_coin, trader2, withdraw_amount);
+
+    test_scenario::return_shared(vault);
+    test_scenario::return_shared(order_manager);
+    cleanup_scenario(scenario)
+}
+
+
 
 #[test]
 #[expected_failure(abort_code = vault::ENotZeroAmount)]
-fun test_withdraw_zero_amount_fails() {
+public fun test_cannot_withdraw_zero_amount() {
     let mut scenario = setup_test_scenario();
-    let (governor, trader_1, _, _, _, _, _) = get_test_addresses();
-    
-    // Setup vault with deposit
-    test_scenario::next_tx(&mut scenario, governor);
-    let (vault_admin_cap, order_cap, mut vault) = vault::initialize<USDC>(ctx(&mut scenario));
-    
-    let deposit_amount = 1_000_000;
-    let usdc_coin = mint_usdc(&mut scenario, trader_1, deposit_amount);
-    
-    test_scenario::next_tx(&mut scenario, trader_1);
-    vault::deposit(&mut vault, usdc_coin, ctx(&mut scenario));
-    
-    // Try to withdraw zero amount
-    test_scenario::next_tx(&mut scenario, trader_1);
-    let withdrawn_coin = vault::withdraw(&order_cap, &mut vault, trader_1, 0, 0, ctx(&mut scenario)); // Should fail
-    
-    coin::burn_for_testing(withdrawn_coin);
-    test_scenario::next_tx(&mut scenario, governor);
-    transfer::public_transfer(vault_admin_cap, governor);
-    transfer::public_transfer(order_cap, governor);
-    transfer::public_share_object(vault);
-    
-    cleanup_scenario(scenario);
+    let (_, trader1, trader2, _, _, _, _) = get_test_addresses();
+    let (mut vault, maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
+    test_scenario::return_shared(maker_vault);
+
+    // Mint USDC and deposit into vault
+    let amount = 1000;
+    let amount2 = 1500;
+    deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
+    deposit_trader_funds(&mut scenario, &mut vault, trader2, amount2);
+
+    let total_asset_before = vault::total_asset_available(&vault);
+    assert_eq(total_asset_before, amount + amount2);
+
+    // Withdraw from vault
+    test_scenario::next_tx(&mut scenario, trader1);
+    let withdraw_amount = 0;
+    let withdrawn_coin = order::taker_withdraw(&mut order_manager, &mut vault, withdraw_amount, ctx(&mut scenario));
+    transfer::public_transfer(withdrawn_coin, trader1);
+
+    test_scenario::return_shared(vault);
+    test_scenario::return_shared(order_manager);
+    cleanup_scenario(scenario)
 }
 
 #[test]
 #[expected_failure(abort_code = vault::EInsufficientBalance)]
-fun test_withdraw_insufficient_balance_fails() {
+public fun test_can_withdraw_remaining_nonlocked_balance() {
     let mut scenario = setup_test_scenario();
-    let (governor, trader_1, _, _, _, _, _) = get_test_addresses();
-    
-    // Setup vault with small deposit
-    test_scenario::next_tx(&mut scenario, governor);
-    let (vault_admin_cap, order_cap, mut vault) = vault::initialize<USDC>(ctx(&mut scenario));
-    
-    let deposit_amount = 500_000; // 0.5 USDC
-    let usdc_coin = mint_usdc(&mut scenario, trader_1, deposit_amount);
-    
-    test_scenario::next_tx(&mut scenario, trader_1);
-    vault::deposit(&mut vault, usdc_coin, ctx(&mut scenario));
-    
-    // Try to withdraw more than available
-    let withdraw_amount = 1_000_000; // 1 USDC (more than deposited)
-    test_scenario::next_tx(&mut scenario, trader_1);
-    let withdrawn_coin = vault::withdraw(&order_cap, &mut vault, trader_1, withdraw_amount, 0, ctx(&mut scenario)); // Should fail
-    
-    coin::burn_for_testing(withdrawn_coin);
-    test_scenario::next_tx(&mut scenario, governor);
-    transfer::public_transfer(vault_admin_cap, governor);
-    transfer::public_transfer(order_cap, governor);
-    transfer::public_share_object(vault);
-    
-    cleanup_scenario(scenario);
+    let (_, trader1, trader2, _, _, _, _) = get_test_addresses();
+    let (mut vault, maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
+    test_scenario::return_shared(maker_vault);
+
+    // Mint USDC and deposit into vault
+    let amount = 1000;
+    let amount2 = 1500;
+    deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
+    deposit_trader_funds(&mut scenario, &mut vault, trader2, amount2);
+
+    let total_asset_before = vault::total_asset_available(&vault);
+    assert_eq(total_asset_before, amount + amount2);
+
+    // Attempt to withdraw more than balance
+    test_scenario::next_tx(&mut scenario, trader1);
+    let withdraw_amount = 1200;
+
+    let withdrawn = order::taker_withdraw(&mut order_manager, &mut vault, withdraw_amount, ctx(&mut scenario));
+    transfer::public_transfer(withdrawn, trader1);
+
+    test_scenario::return_shared(vault);
+    test_scenario::return_shared(order_manager);
+    cleanup_scenario(scenario)
 }
 
 #[test]
 #[expected_failure(abort_code = vault::EInsufficientBalance)]
-fun test_withdraw_with_locked_funds_fails() {
+public fun test_cannot_withdraw_locked_balance() {
     let mut scenario = setup_test_scenario();
-    let (governor, trader_1, _, _, _, _, _) = get_test_addresses();
-    
-    // Setup vault with deposit
-    test_scenario::next_tx(&mut scenario, governor);
-    let (vault_admin_cap, order_cap, mut vault) = vault::initialize<USDC>(ctx(&mut scenario));
-    
-    let deposit_amount = 1_000_000; // 1 USDC
-    let usdc_coin = mint_usdc(&mut scenario, trader_1, deposit_amount);
-    
-    test_scenario::next_tx(&mut scenario, trader_1);
-    vault::deposit(&mut vault, usdc_coin, ctx(&mut scenario));
-    
-    // Try to withdraw with locked funds that exceed available
-    let withdraw_amount = 600_000; // 0.6 USDC
-    let locked_amount = 500_000;   // 0.5 USDC locked
-    // Available = 1.0 - 0.5 = 0.5 USDC, but trying to withdraw 0.6 USDC
-    
-    test_scenario::next_tx(&mut scenario, trader_1);
-    let withdrawn_coin = vault::withdraw(&order_cap, &mut vault, trader_1, withdraw_amount, locked_amount, ctx(&mut scenario)); // Should fail
-    
-    coin::burn_for_testing(withdrawn_coin);
-    test_scenario::next_tx(&mut scenario, governor);
-    transfer::public_transfer(vault_admin_cap, governor);
-    transfer::public_transfer(order_cap, governor);
-    transfer::public_share_object(vault);
-    
-    cleanup_scenario(scenario);
-}
+    let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
+    let (mut vault, mut maker_vault, mut order_manager, clock, _) = setup_funded_scenario(&mut scenario, none());
 
-#[test]
-fun test_withdraw_with_locked_funds_success() {
-    let mut scenario = setup_test_scenario();
-    let (governor, trader_1, _, _, _, _, _) = get_test_addresses();
-    
-    // Setup vault with deposit
-    test_scenario::next_tx(&mut scenario, governor);
-    let (vault_admin_cap, order_cap, mut vault) = vault::initialize<USDC>(ctx(&mut scenario));
-    
-    let deposit_amount = 1_000_000; // 1 USDC
-    let usdc_coin = mint_usdc(&mut scenario, trader_1, deposit_amount);
-    
-    test_scenario::next_tx(&mut scenario, trader_1);
-    vault::deposit(&mut vault, usdc_coin, ctx(&mut scenario));
-    
-    // Withdraw with locked funds (valid case)
-    let withdraw_amount = 400_000; // 0.4 USDC
-    let locked_amount = 500_000;   // 0.5 USDC locked
-    // Available = 1.0 - 0.5 = 0.5 USDC, withdrawing 0.4 USDC is ok
-    
-    test_scenario::next_tx(&mut scenario, trader_1);
-    let withdrawn_coin = vault::withdraw(&order_cap, &mut vault, trader_1, withdraw_amount, locked_amount, ctx(&mut scenario));
-    
-    // Verify withdrawal
-    assert!(coin::value(&withdrawn_coin) == withdraw_amount);
-    assert!(vault::taker_balance(&vault, trader_1) == deposit_amount - withdraw_amount);
-    
-    // Cleanup
-    coin::burn_for_testing(withdrawn_coin);
-    test_scenario::next_tx(&mut scenario, governor);
-    transfer::public_transfer(vault_admin_cap, governor);
-    transfer::public_transfer(order_cap, governor);
-    transfer::public_share_object(vault);
-    
-    cleanup_scenario(scenario);
-}
+    // Create an order to lock some balance
+    test_scenario::next_tx(&mut scenario, trader1);
+    let deposit_amount = 1000;
+    deposit_trader_funds(&mut scenario, &mut vault, trader1, deposit_amount);
 
-#[test]
-fun test_get_withdrawable_balance_with_locked() {
-    let mut scenario = setup_test_scenario();
-    let (governor, trader_1, _, _, _, _, _) = get_test_addresses();
-    
-    // Setup vault with deposit
-    test_scenario::next_tx(&mut scenario, governor);
-    let (vault_admin_cap, order_cap, mut vault) = vault::initialize<USDC>(ctx(&mut scenario));
-    
-    let deposit_amount = 1_000_000; // 1 USDC
-    let usdc_coin = mint_usdc(&mut scenario, trader_1, deposit_amount);
-    
-    test_scenario::next_tx(&mut scenario, trader_1);
-    vault::deposit(&mut vault, usdc_coin, ctx(&mut scenario));
-    
-    // Test withdrawable balance calculation
-    let locked_amount = 300_000; // 0.3 USDC locked
-    let expected_withdrawable = deposit_amount - locked_amount; // 0.7 USDC
-    
-    let actual_withdrawable = vault::get_withdrawable_balance_with_locked(&order_cap, &vault, trader_1, locked_amount);
-    assert!(actual_withdrawable == expected_withdrawable);
-    
-    // Test with locked amount exceeding balance
-    let excessive_locked = 1_500_000; // 1.5 USDC locked (more than balance)
-    let withdrawable_with_excess = vault::get_withdrawable_balance_with_locked(&order_cap, &vault, trader_1, excessive_locked);
-    assert!(withdrawable_with_excess == 0);
-    
-    // Cleanup
-    test_scenario::next_tx(&mut scenario, governor);
-    transfer::public_transfer(vault_admin_cap, governor);
-    transfer::public_transfer(order_cap, governor);
-    transfer::public_share_object(vault);
-    
-    cleanup_scenario(scenario);
-}
+    test_scenario::next_tx(&mut scenario, coordinator);
+    let order_amount = 300;
+    let note = create_test_note(trader1, maker1, order_amount, order_amount * 3, clock.timestamp_ms());
+    let coordinator_cap = scenario.take_from_sender<CoordinatorCap>();
+    order::create_note(&coordinator_cap, &mut order_manager, &mut vault, &mut maker_vault, note, &clock, ctx(&mut scenario));
+    scenario.return_to_sender(coordinator_cap);
 
-#[test]
-fun test_complete_withdrawal() {
-    let mut scenario = setup_test_scenario();
-    let (governor, trader_1, _, _, _, _, _) = get_test_addresses();
-    
-    // Setup vault with deposit
-    test_scenario::next_tx(&mut scenario, governor);
-    let (vault_admin_cap, order_cap, mut vault) = vault::initialize<USDC>(ctx(&mut scenario));
-    
-    let deposit_amount = 1_000_000; // 1 USDC
-    let usdc_coin = mint_usdc(&mut scenario, trader_1, deposit_amount);
-    
-    test_scenario::next_tx(&mut scenario, trader_1);
-    vault::deposit(&mut vault, usdc_coin, ctx(&mut scenario));
-    
-    // Withdraw all funds
-    test_scenario::next_tx(&mut scenario, trader_1);
-    let withdrawn_coin = vault::withdraw(&order_cap, &mut vault, trader_1, deposit_amount, 0, ctx(&mut scenario));
-    
-    // Verify complete withdrawal
-    assert!(coin::value(&withdrawn_coin) == deposit_amount);
-    assert!(vault::taker_balance(&vault, trader_1) == 0);
-    assert!(vault::total_asset_available(&vault) == 0);
-    
-    // Cleanup
-    coin::burn_for_testing(withdrawn_coin);
-    test_scenario::next_tx(&mut scenario, governor);
-    transfer::public_transfer(vault_admin_cap, governor);
-    transfer::public_transfer(order_cap, governor);
-    transfer::public_share_object(vault);
-    
-    cleanup_scenario(scenario);
-} 
+    // Attempt to withdraw more than withdrawable balance
+    test_scenario::next_tx(&mut scenario, trader1);
+    let withdraw_amount = deposit_amount - order_amount + 1;
+    let withdrawn = order::taker_withdraw(&mut order_manager, &mut vault, withdraw_amount, ctx(&mut scenario));
+    validate_coin_and_transfer_back(&mut scenario, withdrawn, trader1, withdraw_amount);
+
+    clock.destroy_for_testing();
+    test_scenario::return_shared(maker_vault);
+    test_scenario::return_shared(vault);
+    test_scenario::return_shared(order_manager);
+    cleanup_scenario(scenario)
+}
