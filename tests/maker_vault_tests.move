@@ -55,7 +55,6 @@ public fun test_initialize_fails_with_zero_minimum_stake() {
     let mut scenario = setup_test_scenario();
     let (governor, _, _, _, _, _, _) = get_test_addresses();
 
-    // Manually call initialize with zero to ensure abort happens before any objects are created
     test_scenario::next_tx(&mut scenario, governor);
     maker_vault::test_init(ctx(&mut scenario));
 
@@ -78,7 +77,7 @@ public fun test_register_maker_success() {
     let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
     transfer::public_transfer(maker_order_cap, maker1);
 
-    let stake_amount = get_minimum_stake(); // matches default in setup_maker_vault
+    let stake_amount = get_minimum_stake();
     register_test_maker(&mut scenario, &mut maker_vault, maker1, stake_amount);
     maker_vault::assert_maker_registered_event(maker1, stake_amount);
 
@@ -114,7 +113,7 @@ public fun test_cannot_register_with_zero_stake() {
 public fun test_cannot_register_below_minimum_stake() {
     let mut scenario = setup_test_scenario();
     let (governor, _, _, maker1, _, _, _) = get_test_addresses();
-    // Set a custom minimum stake via setup helper
+
     let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, some(1_000_000));
     transfer::public_transfer(maker_order_cap, governor);
 
@@ -423,7 +422,7 @@ public fun test_withdraw_collateral_success() {
     let total_before = maker_vault::total_asset_available(&maker_vault);
     assert_eq(total_before, deposit_amount);
 
-    // Withdraw part of collateral via order manager API (uses locked=0 by default)
+    // Withdraw part of collateral
     test_scenario::next_tx(&mut scenario, maker1);
     let withdraw_amount = 6_000;
     let withdrawn_coin = order::maker_withdraw(&mut order_manager, &mut maker_vault, types::tradable_asset_btc(), withdraw_amount, ctx(&mut scenario));
@@ -625,7 +624,6 @@ public fun test_cannot_unregister_with_nonzero_collateral() {
 
     test_scenario::next_tx(&mut scenario, maker1);
     let withdrawn = maker_vault::unregister_maker(&mut maker_vault, ctx(&mut scenario));
-    // ensure type checker sees the coin (unreachable due to abort)
     transfer::public_transfer(withdrawn, maker1);
 
     test_scenario::return_shared(maker_vault);
@@ -646,7 +644,6 @@ public fun test_unregister_success_after_withdrawing_all_collateral() {
     let deposit_amount = 50_000;
     deposit_maker_collateral(&mut scenario, &mut maker_vault, maker1, types::tradable_asset_btc(), deposit_amount);
 
-    // We need an order_manager to call maker_withdraw; create a temporary one
     let (vault_tmp, maker_vault_tmp, mut order_manager) = setup_complete_system(&mut scenario, none());
     test_scenario::return_shared(vault_tmp);
     test_scenario::return_shared(maker_vault_tmp);
@@ -657,7 +654,6 @@ public fun test_unregister_success_after_withdrawing_all_collateral() {
 
     test_scenario::return_shared(order_manager);
 
-    // Now unregister
     test_scenario::next_tx(&mut scenario, maker1);
     let withdrawn = maker_vault::unregister_maker(&mut maker_vault, ctx(&mut scenario));
     let value = sui::coin::value(&withdrawn);
@@ -704,7 +700,6 @@ public fun test_get_withdrawable_balance_with_locked_view() {
     );
     assert_eq(withdrawable_locked, deposit_amount - locked);
 
-    // Move capability to avoid drop
     transfer::public_transfer(maker_order_cap, governor);
 
     test_scenario::return_shared(maker_vault);
