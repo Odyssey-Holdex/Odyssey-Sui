@@ -8,6 +8,7 @@ use odyssey_sui::types::{Self, Note, TradableAsset, Direction};
 use odyssey_sui::vault::{Self, Vault, VaultAdminCap, OrderCap};
 use odyssey_sui::maker_vault::{Self, MakerVault, MakerVaultAdminCap, MakerOrderCap};
 use odyssey_sui::order::{Self, OrderManager, OrderAdminCap};
+use sui::test_utils::assert_eq;
 
 // Test token types
 public struct USDC has drop {}
@@ -15,6 +16,7 @@ public struct ITHACA has drop {}
 
 // Constants for testing
 const DAY_MS: u64 = 24 * 60 * 60 * 1000;
+const START_MS: u64 = DAY_MS * 5; // day 5 in milliseconds
 const HOUR_MS: u64 = 60 * 60 * 1000;
 const MINIMUM_STAKE: u64 = 200_000_000; // 200 ITHACA (with 6 decimals)
 
@@ -142,9 +144,11 @@ public fun setup_complete_system(scenario: &mut Scenario, minimum_stake: Option<
 
 /// Create a test clock with current timestamp
 #[test_only]
-public fun create_test_clock(scenario: &mut Scenario): Clock {
+public fun create_test_clock(scenario: &mut Scenario, timestamp_ms: u64): Clock {
     test_scenario::next_tx(scenario, GOVERNOR);
-    clock::create_for_testing(ctx(scenario))
+    let mut clock = clock::create_for_testing(ctx(scenario));
+    clock.set_for_testing(timestamp_ms);
+    (clock)
 }
 
 /// Register a maker in the maker vault
@@ -194,23 +198,23 @@ public fun create_test_note(
     maker: address,
     amount: u64,
     win_payout: u64,
-    expiry_time: u64
+    day_to_expire: u64
 ): Note {
     types::new_note(
-        taker,                               // taker
-        maker,                               // maker  
+        taker,                              // taker
+        maker,                              // maker  
         types::tradable_asset_btc(),        // asset (BTC)
         types::direction_up(),              // direction (UP)
         amount,                             // amount
         84000,                              // starting_price (84k USD, scaled)
         15,                                 // spread (15 USD)
         win_payout,                         // win_payout
-        expiry_time,                        // expiry_time
+        START_MS + day_to_expire * DAY_MS,  // expiry_time
         0,                                  // nonce
         amount,                             // refund_payout (full refund)
         10,                                 // almost_win_spread (10 USD)
         amount + (win_payout - amount) / 2, // almost_win_payout (halfway)
-        expiry_time - DAY_MS               // start_time (1 day before expiry)
+        START_MS                            // start_time
     )
 }
 
@@ -254,20 +258,31 @@ public fun setup_funded_scenario(scenario: &mut Scenario, minimum_stake: Option<
     Vault<USDC>,
     MakerVault<USDC, ITHACA>,
     OrderManager<USDC>,
-    Clock
+    Clock,
+    u64
 ) {
-    let (mut vault, mut maker_vault, order_manager) = setup_complete_system(scenario, minimum_stake);    
-    let clock = create_test_clock(scenario); // Arbitrary timestamp
+    let (vault, mut maker_vault, order_manager) = setup_complete_system(scenario, minimum_stake);    
+    let clock = create_test_clock(scenario, START_MS); // Arbitrary timestamp
 
     // Register and fund maker
     register_test_maker(scenario, &mut maker_vault, MAKER_1, MINIMUM_STAKE);
-    deposit_maker_collateral(scenario, &mut maker_vault, MAKER_1, types::tradable_asset_btc(), 10_000_000); // 10 USDC
+    let maker_deposit_amount = 10_000_000;
+    deposit_maker_collateral(scenario, &mut maker_vault, MAKER_1, types::tradable_asset_btc(), maker_deposit_amount);
     
-    // Fund traders
-    deposit_trader_funds(scenario, &mut vault, TRADER_1, 5_000_000); // 5 USDC  
-    deposit_trader_funds(scenario, &mut vault, TRADER_2, 3_000_000); // 3 USDC
-    
-    (vault, maker_vault, order_manager, clock)
+    (vault, maker_vault, order_manager, clock, maker_deposit_amount)
+}
+
+#[test_only]
+public fun validate_coin_and_transfer_back(
+    scenario: &mut Scenario,
+    coin: Coin<USDC>,
+    recipient: address,
+    expected_amount: u64
+) {
+    test_scenario::next_tx(scenario, recipient);
+    let value = sui::coin::value(&coin);
+    assert_eq(value, expected_amount);
+    transfer::public_transfer(coin, recipient);
 }
 
 /// Advance clock time
