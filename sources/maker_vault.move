@@ -1,11 +1,11 @@
 /// Maker Vault module for managing maker liquidity, staking, and collateral
-module trading_vault::maker_vault;
+module odyssey_sui::maker_vault;
 
 use sui::coin::{Self, Coin};
 use sui::balance::{Self, Balance};
 use sui::table::{Self, Table};
 use sui::event;
-use trading_vault::types::{Self, TradableAsset, MakerInfo};
+use odyssey_sui::types::{Self, TradableAsset, MakerInfo};
 
 // === Constants ===
 
@@ -526,4 +526,10 @@ public fun minimum_stake_amount<T, IthacaType>(
 ): u64 {
     vault.minimum_stake_amount
 }
- 
+
+
+
+#[test_only]
+public fun test_init(ctx: &mut TxContext) {
+    init(ctx)
+}

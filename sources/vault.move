@@ -1,5 +1,5 @@
 /// Vault module for managing trader deposits, withdrawals, and balances
-module trading_vault::vault;
+module odyssey_sui::vault;
 
 use sui::coin::{Self, Coin};
 use sui::balance::{Self, Balance};
@@ -98,7 +98,7 @@ public fun initialize<T>(admin_cap: &VaultAdminCap, ctx: &mut TxContext): (Order
 
     transfer::share_object(vault);
 
-    (order_cap);
+    order_cap
 }
 
 
@@ -310,4 +310,9 @@ public fun validate_amount(amount: u64) {
 /// Validate that address is not zero
 public fun validate_address(addr: address) {
     assert!(addr != @0x0, ENotZeroAddress);
+}
+
+#[test_only]
+public fun test_init(ctx: &mut TxContext) {
+    init(ctx);
 }

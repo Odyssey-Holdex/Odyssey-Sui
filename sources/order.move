@@ -1,13 +1,13 @@
 /// Order module for managing trading notes, orders, and settlements
-module trading_vault::order;
+module odyssey_sui::order;
 
 use sui::table::{Self, Table};
 use sui::event;
 use sui::clock::{Self, Clock};
 use sui::coin::{Coin};
-use trading_vault::types::{Self, Note, NoteStatus, TradableAsset, Actor, SettlementInfo, FeeInfo};
-use trading_vault::vault::{Self, OrderCap};
-use trading_vault::maker_vault::{Self, MakerOrderCap};
+use odyssey_sui::types::{Self, Note, NoteStatus, TradableAsset, Actor, SettlementInfo, FeeInfo};
+use odyssey_sui::vault::{Self, OrderCap};
+use odyssey_sui::maker_vault::{Self, MakerOrderCap};
 
 // === Constants ===
 
@@ -684,4 +684,9 @@ fun calculate_fee(amount: u64, winner: Actor, fee_info: &FeeInfo): u64 {
     } else {
         (amount * types::fee_info_taker_percentage(fee_info)) / max_fee
     }
+}
+
+#[test_only]
+public fun test_init(ctx: &mut TxContext) {
+    init(ctx);
 }
