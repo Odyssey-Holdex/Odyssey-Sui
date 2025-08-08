@@ -312,7 +312,33 @@ public fun validate_address(addr: address) {
     assert!(addr != @0x0, ENotZeroAddress);
 }
 
+// --------------------
+// === Test Helpers ===
+// --------------------
+#[test_only]
+use sui::test_utils::assert_eq;
+
 #[test_only]
 public fun test_init(ctx: &mut TxContext) {
     init(ctx);
+}
+
+#[test_only]
+public fun assert_deposited_event(
+    taker: address,
+    amount: u64
+) {
+    let emitted = event::events_by_type<Deposited>()[0];
+    assert_eq(emitted.trader, taker);
+    assert_eq(emitted.amount, amount);
+}
+
+#[test_only]
+public fun assert_withdrawn_event(
+    taker: address,
+    amount: u64
+) {
+    let emitted = event::events_by_type<Withdrawn>()[0];
+    assert_eq(emitted.trader, taker);
+    assert_eq(emitted.amount, amount);
 }

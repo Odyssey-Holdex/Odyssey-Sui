@@ -4,11 +4,10 @@ module odyssey_sui::test_utils;
 use sui::test_scenario::{Self, Scenario, ctx};
 use sui::clock::{Self, Clock};
 use sui::coin::{Self, Coin};
-use sui::test_utils;
 use odyssey_sui::types::{Self, Note, TradableAsset, Direction};
 use odyssey_sui::vault::{Self, Vault, VaultAdminCap, OrderCap};
 use odyssey_sui::maker_vault::{Self, MakerVault, MakerVaultAdminCap, MakerOrderCap};
-use odyssey_sui::order::{Self, OrderManager, OrderAdminCap, CoordinatorCap};
+use odyssey_sui::order::{Self, OrderManager, OrderAdminCap};
 
 // Test token types
 public struct USDC has drop {}
