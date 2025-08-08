@@ -528,8 +528,78 @@ public fun minimum_stake_amount<T, IthacaType>(
 }
 
 
+// --------------------
+// === Test Helpers ===
+// --------------------
+#[test_only]
+use sui::test_utils::assert_eq;
 
 #[test_only]
 public fun test_init(ctx: &mut TxContext) {
     init(ctx)
 }
+
+#[test_only]
+public fun assert_maker_registered_event(
+    maker: address,
+    stake_amount: u64,
+) {
+    let emitted = event::events_by_type<MakerRegistered>()[0];
+    assert_eq(emitted.maker, maker);
+    assert_eq(emitted.stake_amount, stake_amount);
+}
+
+#[test_only]
+public fun assert_maker_unregistered_event(
+    maker: address,
+) {
+    let emitted = event::events_by_type<MakerUnregistered>()[0];
+    assert_eq(emitted.maker, maker);
+}
+
+#[test_only]
+public fun assert_collateral_deposited_event(
+    maker: address,
+    amount: u64,
+) {
+    let emitted = event::events_by_type<CollateralDeposited>()[0];
+    assert_eq(emitted.maker, maker);
+    assert_eq(emitted.amount, amount);
+}
+
+#[test_only]
+public fun assert_collateral_withdrawn_event(
+    maker: address,
+    amount: u64,
+) {
+    let emitted = event::events_by_type<CollateralWithdrawn>()[0];
+    assert_eq(emitted.maker, maker);
+    assert_eq(emitted.amount, amount);
+}
+
+#[test_only]
+public fun assert_ithaca_staked_event(
+    maker: address,
+    amount: u64,
+) {
+    let emitted = event::events_by_type<IthacaStaked>()[0];
+    assert_eq(emitted.maker, maker);
+    assert_eq(emitted.amount, amount);
+}
+
+#[test_only]
+public fun assert_minimum_stake_amount_set_event(
+    amount: u64,
+) {
+    let emitted = event::events_by_type<MinimumStakeAmountSet>()[0];
+    assert_eq(emitted.amount, amount);
+}
+
+#[test_only]
+public fun assert_custom_min_stake_amount_set_event(
+    amount: u64,
+) {
+    let emitted = event::events_by_type<CustomMinStakeAmountSet>()[0];
+    assert_eq(emitted.amount, amount);
+}
+
