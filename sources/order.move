@@ -690,9 +690,11 @@ fun process_settlement<T, IthacaType>(
 fun calculate_fee(amount: u64, winner: Actor, fee_info: &FeeInfo): u64 {
     let max_fee = types::max_fee_percentage();
     if (types::is_actor_maker(&winner)) {
-        (amount * types::fee_info_maker_percentage(fee_info)) / max_fee
+        let result: u256 = (amount as u256) * (types::fee_info_maker_percentage(fee_info) as u256) / (max_fee as u256);
+        result as u64
     } else {
-        (amount * types::fee_info_taker_percentage(fee_info)) / max_fee
+        let result: u256 = (amount as u256) * (types::fee_info_taker_percentage(fee_info) as u256) / (max_fee as u256);
+        result as u64
     }
 }
 
