@@ -324,6 +324,23 @@ public fun timestamp_plus_hours(clock: &Clock, hours: u64): u64 {
     clock::timestamp_ms(clock) + (hours * HOUR_MS)
 }
 
+/// Set both taker and maker fee percentages for testing
+#[test_only]
+public fun set_fee_percentages(
+    scenario: &mut Scenario,
+    order_manager: &mut OrderManager<USDC>,
+    taker_fee_percentage: u64,
+    maker_fee_percentage: u64
+) {
+    let (governor, _, _, _, _, _, _) = get_test_addresses();
+    
+    test_scenario::next_tx(scenario, governor);
+    let admin_cap = scenario.take_from_sender<OrderAdminCap>();
+    order::set_taker_fee_percentage(&admin_cap, order_manager, taker_fee_percentage);
+    order::set_maker_fee_percentage(&admin_cap, order_manager, maker_fee_percentage);
+    scenario.return_to_sender(admin_cap);
+}
+
 /// Cleanup test scenario
 #[test_only]
 public fun cleanup_scenario(scenario: Scenario) {
