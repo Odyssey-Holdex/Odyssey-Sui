@@ -409,7 +409,7 @@ public fun test_custom_minimum_stake_other_asset_allows_deposit() {
 public fun test_withdraw_collateral_success() {
     let mut scenario = setup_test_scenario();
     let (_, _, _, maker1, _, _, _) = get_test_addresses();
-    let (vault_unused, mut maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
+    let (vault_unused, mut maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none(), none());
 
     // Ensure maker registered and deposit collateral
     let stake_amount = get_minimum_stake();
@@ -449,7 +449,7 @@ public fun test_withdraw_collateral_success() {
 public fun test_cannot_withdraw_zero_amount() {
     let mut scenario = setup_test_scenario();
     let (_, _, _, maker1, _, _, _) = get_test_addresses();
-    let (vault_unused, mut maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
+    let (vault_unused, mut maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none(), none());
 
     let stake_amount = get_minimum_stake();
     register_test_maker(&mut scenario, &mut maker_vault, maker1, stake_amount);
@@ -472,7 +472,7 @@ public fun test_cannot_withdraw_zero_amount() {
 public fun test_cannot_withdraw_if_not_registered_maker() {
     let mut scenario = setup_test_scenario();
     let (_, _, _, maker1, _, _, _) = get_test_addresses();
-    let (vault_unused, mut maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
+    let (vault_unused, mut maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none(), none());
 
     // maker1 not registered
     test_scenario::next_tx(&mut scenario, maker1);
@@ -490,7 +490,7 @@ public fun test_cannot_withdraw_if_not_registered_maker() {
 public fun test_cannot_withdraw_more_than_available() {
     let mut scenario = setup_test_scenario();
     let (_, _, _, maker1, _, _, _) = get_test_addresses();
-    let (vault_unused, mut maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
+    let (vault_unused, mut maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none(), none());
 
     let stake_amount = get_minimum_stake();
     register_test_maker(&mut scenario, &mut maker_vault, maker1, stake_amount);
@@ -644,7 +644,7 @@ public fun test_unregister_success_after_withdrawing_all_collateral() {
     let deposit_amount = 50_000;
     deposit_maker_collateral(&mut scenario, &mut maker_vault, maker1, types::tradable_asset_btc(), deposit_amount);
 
-    let (vault_tmp, maker_vault_tmp, mut order_manager) = setup_complete_system(&mut scenario, none());
+    let (vault_tmp, maker_vault_tmp, mut order_manager) = setup_complete_system(&mut scenario, none(), none());
     test_scenario::return_shared(vault_tmp);
     test_scenario::return_shared(maker_vault_tmp);
 

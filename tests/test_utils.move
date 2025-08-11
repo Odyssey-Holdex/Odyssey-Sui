@@ -9,6 +9,7 @@ use odyssey_sui::vault::{Self, Vault, VaultAdminCap, OrderCap};
 use odyssey_sui::maker_vault::{Self, MakerVault, MakerVaultAdminCap, MakerOrderCap};
 use odyssey_sui::order::{Self, OrderManager, OrderAdminCap};
 use sui::test_utils::assert_eq;
+use std::option::none;
 
 // Test token types
 public struct USDC has drop {}
@@ -104,16 +105,24 @@ public fun setup_maker_vault(scenario: &mut Scenario, mut minimum_stake: Option<
 public fun setup_order_manager(
     scenario: &mut Scenario,
     vault_order_cap: OrderCap,
-    maker_order_cap: MakerOrderCap
+    maker_order_cap: MakerOrderCap,
+    mut custom_treasury: Option<address>
 ): (OrderManager<USDC>) {
     let (governor, _, _, _, _, treasury, coordinator) = get_test_addresses();
 
     test_scenario::next_tx(scenario, governor);
     order::test_init(ctx(scenario));
 
+    let used_treasury: address = if (option::is_some(&custom_treasury)) {
+        let treasury_address = option::extract(&mut custom_treasury);
+        treasury_address
+    } else {
+        treasury
+    };
+
     test_scenario::next_tx(scenario, governor);
     let order_admin_cap = scenario.take_from_sender<OrderAdminCap>();
-    let coordinator_cap = order::initialize<USDC>(&order_admin_cap, vault_order_cap, maker_order_cap, treasury, ctx(scenario));
+    let coordinator_cap = order::initialize<USDC>(&order_admin_cap, vault_order_cap, maker_order_cap, used_treasury, ctx(scenario));
     transfer::public_transfer(coordinator_cap, coordinator);
     scenario.return_to_sender(order_admin_cap);
 
@@ -126,7 +135,7 @@ public fun setup_order_manager(
 
 /// Complete system setup
 #[test_only]
-public fun setup_complete_system(scenario: &mut Scenario, minimum_stake: Option<u64>): (
+public fun setup_complete_system(scenario: &mut Scenario, minimum_stake: Option<u64>, mut custom_treasury: Option<address>): (
     Vault<USDC>,
     MakerVault<USDC, ITHACA>,
     OrderManager<USDC>
@@ -136,7 +145,8 @@ public fun setup_complete_system(scenario: &mut Scenario, minimum_stake: Option<
     let (order_manager) = setup_order_manager(
         scenario, 
         order_cap,
-        maker_order_cap
+        maker_order_cap,
+        custom_treasury
     );
     
     (vault, maker_vault, order_manager)
@@ -261,7 +271,7 @@ public fun setup_funded_scenario(scenario: &mut Scenario, minimum_stake: Option<
     Clock,
     u64
 ) {
-    let (vault, mut maker_vault, order_manager) = setup_complete_system(scenario, minimum_stake);    
+    let (vault, mut maker_vault, order_manager) = setup_complete_system(scenario, minimum_stake, none());    
     let clock = create_test_clock(scenario, START_MS); // Arbitrary timestamp
 
     // Register and fund maker

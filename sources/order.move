@@ -700,3 +700,71 @@ fun calculate_fee(amount: u64, winner: Actor, fee_info: &FeeInfo): u64 {
 public fun test_init(ctx: &mut TxContext) {
     init(ctx);
 }
+
+// --------------------
+// === Test Helpers ===
+// --------------------
+#[test_only]
+use sui::test_utils::assert_eq;
+
+#[test_only]
+fun status_to_code(status: &NoteStatus): u64 {
+    if (types::is_note_status_win(status)) {
+        0
+    } else if (types::is_note_status_loss(status)) {
+        1
+    } else if (types::is_note_status_refund(status)) {
+        2
+    } else {
+        3
+    }
+}
+
+#[test_only]
+public fun assert_note_created_event(
+    expected_note_id: u64,
+    expected_taker: address,
+    expected_maker: address,
+    expected_asset: TradableAsset,
+    expected_amount: u64,
+    expected_expiry_time: u64,
+) {
+    let emitted = event::events_by_type<NoteCreated>()[0];
+    assert_eq(emitted.note_id, expected_note_id);
+    assert_eq(emitted.taker, expected_taker);
+    assert_eq(emitted.maker, expected_maker);
+    // Compare enum via string conversion utility to avoid type mismatches
+    let emitted_asset_str = types::tradable_asset_to_string(&emitted.asset);
+    let expected_asset_str = types::tradable_asset_to_string(&expected_asset);
+    assert!(std::string::as_bytes(&emitted_asset_str) == std::string::as_bytes(&expected_asset_str), EInvalidNote);
+    assert_eq(emitted.amount, expected_amount);
+    assert_eq(emitted.expiry_time, expected_expiry_time);
+}
+
+#[test_only]
+public fun assert_note_settled_event(
+    expected_note_id: u64,
+    expected_status_code: u64,
+    expected_settlement_price: u64,
+    expected_payout: u64,
+    expected_fee: u64,
+) {
+    let emitted = event::events_by_type<NoteSettled>()[0];
+    assert_eq(emitted.note_id, expected_note_id);
+    assert_eq(status_to_code(&emitted.status), expected_status_code);
+    assert_eq(emitted.settlement_price, expected_settlement_price);
+    assert_eq(emitted.payout, expected_payout);
+    assert_eq(emitted.fee, expected_fee);
+}
+
+#[test_only]
+public fun assert_taker_fee_percentage_changed_event(expected_percentage: u64) {
+    let emitted = event::events_by_type<TakerFeePercentageChanged>()[0];
+    assert_eq(emitted.taker_fee_percentage, expected_percentage);
+}
+
+#[test_only]
+public fun assert_maker_fee_percentage_changed_event(expected_percentage: u64) {
+    let emitted = event::events_by_type<MakerFeePercentageChanged>()[0];
+    assert_eq(emitted.maker_fee_percentage, expected_percentage);
+}
