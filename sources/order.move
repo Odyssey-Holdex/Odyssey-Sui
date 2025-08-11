@@ -17,6 +17,9 @@ const VERSION: u64 = 1;
 // === Errors ===
 
 #[error]
+const ENotZeroAddress: vector<u8> = b"Address cannot be zero";
+
+#[error]
 const EInvalidNote: vector<u8> = b"Invalid note data provided";
 
 #[error]
@@ -169,6 +172,8 @@ public fun initialize<T>(
     treasury: address,
     ctx: &mut TxContext
 ): (CoordinatorCap) {
+    validate_address(treasury);
+
     let coordinator_cap = CoordinatorCap {
         id: object::new(ctx),
     };
@@ -473,6 +478,11 @@ public fun treasury<T>(order_manager: &OrderManager<T>): address {
 }
 
 // === Helper Functions ===
+
+/// Validate that address is not zero
+public fun validate_address(addr: address) {
+    assert!(addr != @0x0, ENotZeroAddress);
+}
 
 /// Update taker locked balance
 fun update_taker_locked_balance<T>(
