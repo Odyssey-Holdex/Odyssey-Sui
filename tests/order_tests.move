@@ -223,7 +223,7 @@ public fun test_cannot_create_note_with_refund_payout_bigger_than_amount() {
 
 #[test]
 #[expected_failure(abort_code = order::EInvalidPayout)]
-public fun test_cannot_create_note_with_almost_win_payout_zero_or_more_than_win() {
+public fun test_cannot_create_note_with_almost_win_payout_zero() {
     let mut scenario = setup_test_scenario();
     let (mut vault, mut maker_vault, mut order_manager, clock, _) = setup_funded_scenario(&mut scenario, none());
     let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
@@ -232,6 +232,30 @@ public fun test_cannot_create_note_with_almost_win_payout_zero_or_more_than_win(
 
     // almost win payout = 0
     let note = types::new_note(trader1, maker1, types::tradable_asset_btc(), types::direction_up(), 100, 84000, 15, 200, timestamp_plus_days(&clock, 2), 0, 100, 10, 0, 1);
+
+    test_scenario::next_tx(&mut scenario, coordinator);
+    let coordinator_cap = scenario.take_from_sender<CoordinatorCap>();
+    let _ = order::create_note(&coordinator_cap, &mut order_manager, &mut vault, &mut maker_vault, note, &clock, ctx(&mut scenario));
+    scenario.return_to_sender(coordinator_cap);
+
+    test_scenario::return_shared(vault);
+    test_scenario::return_shared(maker_vault);
+    test_scenario::return_shared(order_manager);
+    clock.destroy_for_testing();
+    cleanup_scenario(scenario)
+}
+
+#[test]
+#[expected_failure(abort_code = order::EInvalidPayout)]
+public fun test_cannot_create_note_with_almost_win_payout_zero_more_than_win() {
+    let mut scenario = setup_test_scenario();
+    let (mut vault, mut maker_vault, mut order_manager, clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
+
+    deposit_trader_funds(&mut scenario, &mut vault, trader1, 1000);
+
+    // almost win payout = 201, win payout = 200
+    let note = types::new_note(trader1, maker1, types::tradable_asset_btc(), types::direction_up(), 100, 84000, 15, 200, timestamp_plus_days(&clock, 2), 0, 100, 10, 201, 1);
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let coordinator_cap = scenario.take_from_sender<CoordinatorCap>();

@@ -135,7 +135,7 @@ public fun setup_order_manager(
 
 /// Complete system setup
 #[test_only]
-public fun setup_complete_system(scenario: &mut Scenario, minimum_stake: Option<u64>, mut custom_treasury: Option<address>): (
+public fun setup_complete_system(scenario: &mut Scenario, minimum_stake: Option<u64>, custom_treasury: Option<address>): (
     Vault<USDC>,
     MakerVault<USDC, ITHACA>,
     OrderManager<USDC>
