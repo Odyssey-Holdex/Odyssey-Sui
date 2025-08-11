@@ -459,7 +459,6 @@ public fun test_settle_win_up_direction() {
 
     // Verify maker vault total asset availability
     let final_maker_vault_asset = maker_vault::total_asset_available(&maker_vault);
-    debug::print(&final_maker_vault_asset);
     assert_eq(final_maker_vault_asset, prev_maker_balance - winning_amount);
 
     // Locks reduced
@@ -479,7 +478,7 @@ public fun test_settle_win_up_direction() {
 public fun test_settle_loss_up_direction() {
     let mut scenario = setup_test_scenario();
     let (mut vault, mut maker_vault, mut order_manager, mut clock, _) = setup_funded_scenario(&mut scenario, none());
-    let (governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
+    let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set maker fee percentage to 0.1% (smaller to avoid overflow)
     let maker_fee_percentage = 1000000000000000u64; // 0.1%
@@ -488,6 +487,9 @@ public fun test_settle_loss_up_direction() {
     let amount = 1_000;
     let win_payout = amount * 3;
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
+    
+    let prev_taker_balance = vault::taker_balance(&vault, trader1);
+    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
     let note = create_test_note(trader1, maker1, amount, win_payout, 2);
 
     test_scenario::next_tx(&mut scenario, coordinator);
@@ -511,6 +513,26 @@ public fun test_settle_loss_up_direction() {
 
     order::assert_note_settled_event(note_id, 1, spot_price, amount, expected_fee);
 
+    let amount_after_fee = amount - expected_fee; // 999
+    
+    // Verify taker balance
+    test_scenario::next_tx(&mut scenario, trader1);
+    let final_taker_balance = vault::taker_balance(&vault, trader1);
+    assert_eq(final_taker_balance, prev_taker_balance - amount);
+
+    // Verify maker balance
+    test_scenario::next_tx(&mut scenario, maker1);
+    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    assert_eq(final_maker_balance, prev_maker_balance + amount_after_fee); // Maker gets amount after fee
+
+    // Verify vault total asset availability
+    let final_vault_asset = vault::total_asset_available(&vault);
+    assert_eq(final_vault_asset, prev_taker_balance - amount);
+
+    // Verify maker vault total asset availability
+    let final_maker_vault_asset = maker_vault::total_asset_available(&maker_vault);
+    assert_eq(final_maker_vault_asset, prev_maker_balance + amount_after_fee); // Maker vault has amount after fee
+
     test_scenario::return_shared(vault);
     test_scenario::return_shared(maker_vault);
     test_scenario::return_shared(order_manager);
@@ -522,7 +544,7 @@ public fun test_settle_loss_up_direction() {
 public fun test_settle_refund_up_direction() {
     let mut scenario = setup_test_scenario();
     let (mut vault, mut maker_vault, mut order_manager, mut clock, _) = setup_funded_scenario(&mut scenario, none());
-    let (governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
+    let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set both fee percentages to make sure no fees are applied on refund
     let fee_percentage = 1000000000000000u64; // 0.1%
@@ -531,6 +553,9 @@ public fun test_settle_refund_up_direction() {
     let amount = 1_000;
     let win_payout = amount * 3;
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
+    
+    let prev_taker_balance = vault::taker_balance(&vault, trader1);
+    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
     let note = create_test_note(trader1, maker1, amount, win_payout, 2);
 
     test_scenario::next_tx(&mut scenario, coordinator);
@@ -550,6 +575,24 @@ public fun test_settle_refund_up_direction() {
 
     // Assert event (no fee for refund)
     order::assert_note_settled_event(note_id, 2, spot_price, amount, 0);
+    
+    // Verify taker balance
+    test_scenario::next_tx(&mut scenario, trader1);
+    let final_taker_balance = vault::taker_balance(&vault, trader1);
+    assert_eq(final_taker_balance, prev_taker_balance); // Taker gets full refund
+
+    // Verify maker balance
+    test_scenario::next_tx(&mut scenario, maker1);
+    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    assert_eq(final_maker_balance, prev_maker_balance); // Maker gets nothing (no fees)
+
+    // Verify vault total asset availability
+    let final_vault_asset = vault::total_asset_available(&vault);
+    assert_eq(final_vault_asset, prev_taker_balance); // Vault has the refund amount
+
+    // Verify maker vault total asset availability
+    let final_maker_vault_asset = maker_vault::total_asset_available(&maker_vault);
+    assert_eq(final_maker_vault_asset, prev_maker_balance); // Maker vault has same amount
 
     clock.destroy_for_testing();
     test_scenario::return_shared(vault);
@@ -562,7 +605,7 @@ public fun test_settle_refund_up_direction() {
 public fun test_settle_almost_win_up_direction() {
     let mut scenario = setup_test_scenario();
     let (mut vault, mut maker_vault, mut order_manager, mut clock, _) = setup_funded_scenario(&mut scenario, none());
-    let (governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
+    let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set both fee percentages to test almost win scenario
     let fee_percentage = 1000000000000000u64; // 0.1%
@@ -571,6 +614,9 @@ public fun test_settle_almost_win_up_direction() {
     let amount = 1_000;
     let win_payout = amount * 3;
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
+    
+    let prev_taker_balance = vault::taker_balance(&vault, trader1);
+    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
     let note = create_test_note(trader1, maker1, amount, win_payout, 2);
 
     test_scenario::next_tx(&mut scenario, coordinator);
@@ -595,6 +641,28 @@ public fun test_settle_almost_win_up_direction() {
 
     order::assert_note_settled_event(note_id, 3, spot_price, types::note_almost_win_payout(&note), expected_fee);
 
+    let almost_win_payout = types::note_almost_win_payout(&note);
+    let transfer_amount = almost_win_payout - amount; // 1000
+    let amount_after_fee = transfer_amount - expected_fee; // 999
+
+    // Verify taker balance
+    test_scenario::next_tx(&mut scenario, trader1);
+    let final_taker_balance = vault::taker_balance(&vault, trader1);
+    assert_eq(final_taker_balance, prev_taker_balance + amount_after_fee); // Taker gets transfer amount after fee
+
+    // Verify maker balance
+    test_scenario::next_tx(&mut scenario, maker1);
+    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    assert_eq(final_maker_balance, prev_maker_balance - transfer_amount); // Maker loses the transfer amount
+
+    // Verify vault total asset availability
+    let final_vault_asset = vault::total_asset_available(&vault);
+    assert_eq(final_vault_asset, prev_taker_balance + amount_after_fee); // Vault has transfer amount after fee
+
+    // Verify maker vault total asset availability
+    let final_maker_vault_asset = maker_vault::total_asset_available(&maker_vault);
+    assert_eq(final_maker_vault_asset, prev_maker_balance - transfer_amount); // Maker vault has reduced amount
+
     clock.destroy_for_testing();
     test_scenario::return_shared(vault);
     test_scenario::return_shared(maker_vault);
@@ -606,7 +674,7 @@ public fun test_settle_almost_win_up_direction() {
 public fun test_settle_variants_down_direction() {
     let mut scenario = setup_test_scenario();
     let (mut vault, mut maker_vault, mut order_manager, mut clock, _) = setup_funded_scenario(&mut scenario, none());
-    let (governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
+    let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set taker fee percentage for win scenario
     let taker_fee_percentage = 1000000000000000u64; // 0.1%
@@ -616,6 +684,8 @@ public fun test_settle_variants_down_direction() {
     let win_payout = amount * 3;
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
 
+    let prev_taker_balance = vault::taker_balance(&vault, trader1);
+    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
     let note = create_custom_note(
         trader1,
         maker1,
@@ -652,6 +722,26 @@ public fun test_settle_variants_down_direction() {
 
     // Assert event with fee
     order::assert_note_settled_event(note_id, 0, spot_price_win, win_payout, expected_fee);
+
+    let amount_after_fee = winning_amount - expected_fee; // 1998
+
+    // Verify taker balance
+    test_scenario::next_tx(&mut scenario, trader1);
+    let final_taker_balance = vault::taker_balance(&vault, trader1);
+    assert_eq(final_taker_balance, prev_taker_balance + amount_after_fee); // Taker gets amount after fee
+
+    // Verify maker balance
+    test_scenario::next_tx(&mut scenario, maker1);
+    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    assert_eq(final_maker_balance, prev_maker_balance - winning_amount); // Maker loses the full winning amount
+
+    // Verify vault total asset availability
+    let final_vault_asset = vault::total_asset_available(&vault);
+    assert_eq(final_vault_asset, prev_taker_balance + amount_after_fee); // Vault has amount after fee
+
+    // Verify maker vault total asset availability
+    let final_maker_vault_asset = maker_vault::total_asset_available(&maker_vault);
+    assert_eq(final_maker_vault_asset, prev_maker_balance - winning_amount); // Maker vault has reduced amount
 
     clock.destroy_for_testing();
     test_scenario::return_shared(vault);
