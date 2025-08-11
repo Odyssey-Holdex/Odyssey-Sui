@@ -22,12 +22,10 @@ use odyssey_sui::test_utils::{
     create_test_clock,
     advance_time,
     timestamp_plus_days,
-    USDC,
 };
 use odyssey_sui::types;
 use odyssey_sui::order::{Self, CoordinatorCap};
 use odyssey_sui::maker_vault;
-use odyssey_sui::test_utils::setup_order_manager;
 
 // ==========
 // Initialization Tests
