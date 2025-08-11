@@ -216,13 +216,13 @@ public fun create_test_note(
         types::tradable_asset_btc(),        // asset (BTC)
         types::direction_up(),              // direction (UP)
         amount,                             // amount
-        84000,                              // starting_price (84k USD, scaled)
-        15,                                 // spread (15 USD)
+        84000000000000,                     // starting_price (84k USD, 9 decimal precision)
+        15000000000,                        // spread (15 USD, 9 decimal precision)
         win_payout,                         // win_payout
         START_MS + day_to_expire * DAY_MS,  // expiry_time
         0,                                  // nonce
         amount,                             // refund_payout (full refund)
-        10,                                 // almost_win_spread (10 USD)
+        10000000000,                        // almost_win_spread (10 USD, 9 decimal precision)
         amount + (win_payout - amount) / 2, // almost_win_payout (halfway)
         START_MS                            // start_time
     )
@@ -276,7 +276,7 @@ public fun setup_funded_scenario(scenario: &mut Scenario, minimum_stake: Option<
 
     // Register and fund maker
     register_test_maker(scenario, &mut maker_vault, MAKER_1, MINIMUM_STAKE);
-    let maker_deposit_amount = 10_000_000;
+    let maker_deposit_amount = 50_000_000_000_000; // 50,000 USDC with 9 decimal precision
     deposit_maker_collateral(scenario, &mut maker_vault, MAKER_1, types::tradable_asset_btc(), maker_deposit_amount);
     
     (vault, maker_vault, order_manager, clock, maker_deposit_amount)

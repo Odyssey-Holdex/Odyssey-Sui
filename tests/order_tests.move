@@ -59,7 +59,7 @@ public fun test_create_note_success_and_event_and_locks() {
 
     // Fund actors
     let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
-    let amount1 = 1_000;
+    let amount1 = 1_000_000_000_000; // 1000 USDC with 9 decimal precision
     let win_payout1 = amount1 * 3;
 
     // Register maker and fund balances
@@ -70,7 +70,7 @@ public fun test_create_note_success_and_event_and_locks() {
 
     // Ensure maker collateral sufficient and taker funds available
     test_scenario::next_tx(&mut scenario, maker1);
-    let maker_collateral = 10_000;
+    let maker_collateral = 50_000_000_000_000; // 50,000 USDC with 9 decimal precision
     let usdc_for_maker = mint_usdc(&mut scenario, maker1, maker_collateral);
     maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_btc(), usdc_for_maker, ctx(&mut scenario));
 
@@ -98,8 +98,8 @@ public fun test_create_note_success_and_event_and_locks() {
     assert_eq(maker_locked, win_payout1 - amount1);
 
     // Create another note and validate cumulative locks
-    let amount2 = 300;
-    let win_payout2 = amount2 * 10;
+    let amount2 = 100_000_000_000; // 100 USDC with 9 decimal precision
+    let win_payout2 = amount2 * 3; // More reasonable payout
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount2);
 
     let note2 = create_test_note(trader1, maker1, amount2, win_payout2, 2);
@@ -407,12 +407,12 @@ public fun test_settle_win_up_direction() {
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set taker fee percentage to 5%
-    let taker_fee_percentage = 50000000u64; // 5% (1e9 precision)
+    let taker_fee_percentage = 5000u64; // 5% (5 decimal precision)
     test_utils::set_fee_percentages(&mut scenario, &mut order_manager, taker_fee_percentage, 0);
 
     // Prepare note
-    let amount = 1_000;
-    let win_payout = amount * 3; // win_amount = 2000
+    let amount = 1_000_000_000_000; // 1000 USDC with 9 decimal precision
+    let win_payout = amount * 3; // win_amount = 3000 USDC
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
 
     let prev_taker_balance = vault::taker_balance(&vault, trader1);
@@ -429,19 +429,19 @@ public fun test_settle_win_up_direction() {
     advance_time(&mut clock, 3 * 24 * 60 * 60 * 1000);
 
     test_scenario::next_tx(&mut scenario, coordinator);
-    let spot_price = 84000 + 16; // > start + spread -> win
+    let spot_price = 84000000000000 + 16000000000; // > start + spread -> win (9 decimal precision)
     let coordinator_cap2 = scenario.take_from_sender<CoordinatorCap>();
     order::settle_note(&coordinator_cap2, &mut order_manager, &mut vault, &mut maker_vault, note_id, spot_price, &clock, ctx(&mut scenario));
     scenario.return_to_sender(coordinator_cap2);
 
-    // Calculate expected fee: 5% of winning amount (2000)
-    let winning_amount = win_payout - amount; // 2000
-    let expected_fee = (winning_amount * taker_fee_percentage) / types::max_fee_percentage(); // 100
+    // Calculate expected fee: 5% of winning amount (2000 USDC)
+    let winning_amount = win_payout - amount; // 2000 USDC
+    let expected_fee = (winning_amount * taker_fee_percentage) / types::max_fee_percentage(); // 100 USDC
 
     // Assert event with fee
     order::assert_note_settled_event(note_id, 0, spot_price, win_payout, expected_fee);
 
-    let amount_after_fee = winning_amount - expected_fee; // 1900
+    let amount_after_fee = winning_amount - expected_fee; // 1900 USDC
 
     // Verify taker balance
     test_scenario::next_tx(&mut scenario, trader1);
@@ -481,10 +481,10 @@ public fun test_settle_loss_up_direction() {
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set maker fee percentage to 10%
-    let maker_fee_percentage = 100000000u64; // 10% (1e9 precision)
+    let maker_fee_percentage = 10000u64; // 10% (5 decimal precision)
     test_utils::set_fee_percentages(&mut scenario, &mut order_manager, 0, maker_fee_percentage);
 
-    let amount = 1_000;
+    let amount = 1_000_000_000_000; // 1000 USDC with 9 decimal precision
     let win_payout = amount * 3;
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
     
@@ -501,19 +501,19 @@ public fun test_settle_loss_up_direction() {
     test_scenario::next_tx(&mut scenario, coordinator);
     advance_time(&mut clock, 3 * 24 * 60 * 60 * 1000);
 
-    let spot_price = 84000 + 1; // > start and <= start+almost_win_spread => LOSS
+    let spot_price = 84000000000000 + 1000000000; // > start and <= start+almost_win_spread => LOSS (9 decimal precision)
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let coordinator_cap2 = scenario.take_from_sender<CoordinatorCap>();
     order::settle_note(&coordinator_cap2, &mut order_manager, &mut vault, &mut maker_vault, note_id, spot_price, &clock, ctx(&mut scenario));
     scenario.return_to_sender(coordinator_cap2);
 
-    // Calculate expected fee: 10% of loss amount (1000)
-    let expected_fee = (amount * maker_fee_percentage) / types::max_fee_percentage(); // 100
+    // Calculate expected fee: 10% of loss amount (1000 USDC)
+    let expected_fee = (amount * maker_fee_percentage) / types::max_fee_percentage(); // 100 USDC
 
     order::assert_note_settled_event(note_id, 1, spot_price, amount, expected_fee);
 
-    let amount_after_fee = amount - expected_fee; // 900
+    let amount_after_fee = amount - expected_fee; // 900 USDC
     
     // Verify taker balance
     test_scenario::next_tx(&mut scenario, trader1);
@@ -547,10 +547,10 @@ public fun test_settle_refund_up_direction() {
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set both fee percentages to make sure no fees are applied on refund
-    let fee_percentage = 50000000u64; // 5% (1e9 precision)
+    let fee_percentage = 5000u64; // 5% (5 decimal precision)
     test_utils::set_fee_percentages(&mut scenario, &mut order_manager, fee_percentage, fee_percentage);
 
-    let amount = 1_000;
+    let amount = 1_000_000_000_000; // 1000 USDC with 9 decimal precision
     let win_payout = amount * 3;
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
     
@@ -566,7 +566,7 @@ public fun test_settle_refund_up_direction() {
     test_scenario::next_tx(&mut scenario, coordinator);
     advance_time(&mut clock, 3 * 24 * 60 * 60 * 1000);
 
-    let spot_price = 84000 - 1; // < start => REFUND
+    let spot_price = 84000000000000 - 1000000000; // < start => REFUND (9 decimal precision)
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let coordinator_cap2 = scenario.take_from_sender<CoordinatorCap>();
@@ -611,14 +611,14 @@ public fun test_settle_refund_less_than_amount_up_direction() {
     // Fees should not apply on refund
     test_utils::set_fee_percentages(&mut scenario, &mut order_manager, 999, 888);
 
-    let amount = 1_000_000;
+    let amount = 1_000_000_000_000; // 1,000 USDC with 9 decimal precision
     let win_payout = amount * 3;
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
 
     let prev_taker_balance = vault::taker_balance(&vault, trader1);
     let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
 
-    let refund_payout = amount - 123_456; // maker gains 123_456
+    let refund_payout = amount - 123_456_000_000; // maker gains 123.456 USDC
 
     let note = create_custom_note(
         trader1,
@@ -626,12 +626,12 @@ public fun test_settle_refund_less_than_amount_up_direction() {
         types::tradable_asset_btc(),
         types::direction_up(),
         amount,
-        84000,
-        15,
+        84000000000000, // 84k USD with 9 decimal precision
+        15000000000,    // 15 USD with 9 decimal precision
         win_payout,
         timestamp_plus_days(&clock, 2),
         /* refund */ refund_payout,
-        /* almost_win_spread */ 10,
+        /* almost_win_spread */ 10000000000, // 10 USD with 9 decimal precision
         /* almost_win_payout */ amount // not used in refund
     );
 
@@ -643,7 +643,7 @@ public fun test_settle_refund_less_than_amount_up_direction() {
     test_scenario::next_tx(&mut scenario, coordinator);
     advance_time(&mut clock, 3 * 24 * 60 * 60 * 1000);
 
-    let spot_price = 84000 - 1; // refund band
+    let spot_price = 84000000000000 - 1000000000; // refund band (9 decimal precision)
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let coord2 = scenario.take_from_sender<CoordinatorCap>();
@@ -682,10 +682,10 @@ public fun test_settle_almost_win_up_direction() {
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set both fee percentages to test almost win scenario
-    let fee_percentage = 75000000u64; // 7.5% (1e9 precision)
+    let fee_percentage = 7500u64; // 7.5% (5 decimal precision)
     test_utils::set_fee_percentages(&mut scenario, &mut order_manager, fee_percentage, fee_percentage);
 
-    let amount = 1_000;
+    let amount = 1_000_000_000_000; // 1000 USDC with 9 decimal precision
     let win_payout = amount * 3;
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
     
@@ -701,7 +701,7 @@ public fun test_settle_almost_win_up_direction() {
     test_scenario::next_tx(&mut scenario, coordinator);
     advance_time(&mut clock, 3 * 24 * 60 * 60 * 1000);
 
-    let spot_price = 84000 + 11; // > start + almost_win_spread (10) and <= spread (15)
+    let spot_price = 84000000000000 + 11000000000; // > start + almost_win_spread (10) and <= spread (15) (9 decimal precision)
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let coordinator_cap2 = scenario.take_from_sender<CoordinatorCap>();
@@ -709,15 +709,15 @@ public fun test_settle_almost_win_up_direction() {
     scenario.return_to_sender(coordinator_cap2);
 
     // For almost win, the payout is greater than amount, so taker gains and pays fee
-    // almost_win_payout = 2000, amount = 1000, transfer = 1000
-    let transfer_amount = types::note_almost_win_payout(&note) - amount; // 1000
-    let expected_fee = (transfer_amount * fee_percentage) / types::max_fee_percentage(); // 75
+    // almost_win_payout = 2000 USDC, amount = 1000 USDC, transfer = 1000 USDC
+    let transfer_amount = types::note_almost_win_payout(&note) - amount; // 1000 USDC
+    let expected_fee = (transfer_amount * fee_percentage) / types::max_fee_percentage(); // 75 USDC
 
     order::assert_note_settled_event(note_id, 3, spot_price, types::note_almost_win_payout(&note), expected_fee);
 
     let almost_win_payout = types::note_almost_win_payout(&note);
-    let transfer_amount = almost_win_payout - amount; // 1000
-    let amount_after_fee = transfer_amount - expected_fee; // 925
+    let transfer_amount = almost_win_payout - amount; // 1000 USDC
+    let amount_after_fee = transfer_amount - expected_fee; // 925 USDC
 
     // Verify taker balance
     test_scenario::next_tx(&mut scenario, trader1);
@@ -751,7 +751,7 @@ public fun test_settle_almost_win_equal_amount_up_direction() {
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set fees (should not apply when no transfer)
-    let fee_percentage = 60000000u64; // 6% (1e9 precision)
+    let fee_percentage = 6000u64; // 6% (5 decimal precision)
     test_utils::set_fee_percentages(&mut scenario, &mut order_manager, fee_percentage, fee_percentage);
 
     let amount = 1_000_000;
@@ -823,7 +823,7 @@ public fun test_settle_almost_win_less_than_amount_up_direction() {
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Maker fee will apply when maker gains
-    let maker_fee_percentage = 80000000u64; // 8% (1e9 precision)
+    let maker_fee_percentage = 8000u64; // 8% (5 decimal precision)
     test_utils::set_fee_percentages(&mut scenario, &mut order_manager, 0, maker_fee_percentage);
 
     let amount = 1_000_000;
@@ -901,7 +901,7 @@ public fun test_settle_variants_down_direction() {
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set taker fee percentage for win scenario
-    let taker_fee_percentage = 90000000u64; // 9% (1e9 precision)
+    let taker_fee_percentage = 9000u64; // 9% (5 decimal precision)
     test_utils::set_fee_percentages(&mut scenario, &mut order_manager, taker_fee_percentage, 0);
 
     let amount = 1_000;
