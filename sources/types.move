@@ -75,7 +75,7 @@ public struct FeeInfo has copy, drop, store {
 
 // === Constants ===
 
-const MAX_FEE_PERCENTAGE: u64 = 1000000000000000000; // 1e18
+const MAX_FEE_PERCENTAGE: u64 = 1000000000; // 1e9 (Sui uses 9 decimals)
 
 // === Public functions ===
 

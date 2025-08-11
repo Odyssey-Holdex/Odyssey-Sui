@@ -406,8 +406,8 @@ public fun test_settle_win_up_direction() {
     let (mut vault, mut maker_vault, mut order_manager, mut clock, _) = setup_funded_scenario(&mut scenario, none());
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
-    // Set taker fee percentage to 0.1% (smaller to avoid overflow)
-    let taker_fee_percentage = 1000000000000000u64; // 0.1%
+    // Set taker fee percentage to 5%
+    let taker_fee_percentage = 50000000u64; // 5% (1e9 precision)
     test_utils::set_fee_percentages(&mut scenario, &mut order_manager, taker_fee_percentage, 0);
 
     // Prepare note
@@ -434,14 +434,14 @@ public fun test_settle_win_up_direction() {
     order::settle_note(&coordinator_cap2, &mut order_manager, &mut vault, &mut maker_vault, note_id, spot_price, &clock, ctx(&mut scenario));
     scenario.return_to_sender(coordinator_cap2);
 
-    // Calculate expected fee: 0.1% of winning amount (2000)
+    // Calculate expected fee: 5% of winning amount (2000)
     let winning_amount = win_payout - amount; // 2000
-    let expected_fee = (winning_amount * taker_fee_percentage) / types::max_fee_percentage(); // 2
+    let expected_fee = (winning_amount * taker_fee_percentage) / types::max_fee_percentage(); // 100
 
     // Assert event with fee
     order::assert_note_settled_event(note_id, 0, spot_price, win_payout, expected_fee);
 
-    let amount_after_fee = winning_amount - expected_fee; // 1998
+    let amount_after_fee = winning_amount - expected_fee; // 1900
 
     // Verify taker balance
     test_scenario::next_tx(&mut scenario, trader1);
@@ -480,8 +480,8 @@ public fun test_settle_loss_up_direction() {
     let (mut vault, mut maker_vault, mut order_manager, mut clock, _) = setup_funded_scenario(&mut scenario, none());
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
-    // Set maker fee percentage to 0.1% (smaller to avoid overflow)
-    let maker_fee_percentage = 1000000000000000u64; // 0.1%
+    // Set maker fee percentage to 10%
+    let maker_fee_percentage = 100000000u64; // 10% (1e9 precision)
     test_utils::set_fee_percentages(&mut scenario, &mut order_manager, 0, maker_fee_percentage);
 
     let amount = 1_000;
@@ -508,12 +508,12 @@ public fun test_settle_loss_up_direction() {
     order::settle_note(&coordinator_cap2, &mut order_manager, &mut vault, &mut maker_vault, note_id, spot_price, &clock, ctx(&mut scenario));
     scenario.return_to_sender(coordinator_cap2);
 
-    // Calculate expected fee: 0.1% of loss amount (1000)
-    let expected_fee = (amount * maker_fee_percentage) / types::max_fee_percentage(); // 1
+    // Calculate expected fee: 10% of loss amount (1000)
+    let expected_fee = (amount * maker_fee_percentage) / types::max_fee_percentage(); // 100
 
     order::assert_note_settled_event(note_id, 1, spot_price, amount, expected_fee);
 
-    let amount_after_fee = amount - expected_fee; // 999
+    let amount_after_fee = amount - expected_fee; // 900
     
     // Verify taker balance
     test_scenario::next_tx(&mut scenario, trader1);
@@ -547,7 +547,7 @@ public fun test_settle_refund_up_direction() {
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set both fee percentages to make sure no fees are applied on refund
-    let fee_percentage = 1000000000000000u64; // 0.1%
+    let fee_percentage = 50000000u64; // 5% (1e9 precision)
     test_utils::set_fee_percentages(&mut scenario, &mut order_manager, fee_percentage, fee_percentage);
 
     let amount = 1_000;
@@ -682,7 +682,7 @@ public fun test_settle_almost_win_up_direction() {
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set both fee percentages to test almost win scenario
-    let fee_percentage = 1000000000000000u64; // 0.1%
+    let fee_percentage = 75000000u64; // 7.5% (1e9 precision)
     test_utils::set_fee_percentages(&mut scenario, &mut order_manager, fee_percentage, fee_percentage);
 
     let amount = 1_000;
@@ -711,13 +711,13 @@ public fun test_settle_almost_win_up_direction() {
     // For almost win, the payout is greater than amount, so taker gains and pays fee
     // almost_win_payout = 2000, amount = 1000, transfer = 1000
     let transfer_amount = types::note_almost_win_payout(&note) - amount; // 1000
-    let expected_fee = (transfer_amount * fee_percentage) / types::max_fee_percentage(); // 1
+    let expected_fee = (transfer_amount * fee_percentage) / types::max_fee_percentage(); // 75
 
     order::assert_note_settled_event(note_id, 3, spot_price, types::note_almost_win_payout(&note), expected_fee);
 
     let almost_win_payout = types::note_almost_win_payout(&note);
     let transfer_amount = almost_win_payout - amount; // 1000
-    let amount_after_fee = transfer_amount - expected_fee; // 999
+    let amount_after_fee = transfer_amount - expected_fee; // 925
 
     // Verify taker balance
     test_scenario::next_tx(&mut scenario, trader1);
@@ -751,7 +751,7 @@ public fun test_settle_almost_win_equal_amount_up_direction() {
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set fees (should not apply when no transfer)
-    let fee_percentage = 1000000000000000u64; // 0.1%
+    let fee_percentage = 60000000u64; // 6% (1e9 precision)
     test_utils::set_fee_percentages(&mut scenario, &mut order_manager, fee_percentage, fee_percentage);
 
     let amount = 1_000_000;
@@ -823,7 +823,7 @@ public fun test_settle_almost_win_less_than_amount_up_direction() {
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Maker fee will apply when maker gains
-    let maker_fee_percentage = 1000000000000000u64; // 0.1%
+    let maker_fee_percentage = 80000000u64; // 8% (1e9 precision)
     test_utils::set_fee_percentages(&mut scenario, &mut order_manager, 0, maker_fee_percentage);
 
     let amount = 1_000_000;
@@ -866,7 +866,7 @@ public fun test_settle_almost_win_less_than_amount_up_direction() {
     scenario.return_to_sender(coord2);
 
     let transferred = amount - almost_win_payout; // 100_000
-    let expected_fee = (transferred * maker_fee_percentage) / types::max_fee_percentage(); // 100
+    let expected_fee = (transferred * maker_fee_percentage) / types::max_fee_percentage(); // 8000
 
     order::assert_note_settled_event(note_id, 3, spot_price, almost_win_payout, expected_fee);
 
@@ -901,7 +901,7 @@ public fun test_settle_variants_down_direction() {
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set taker fee percentage for win scenario
-    let taker_fee_percentage = 1000000000000000u64; // 0.1%
+    let taker_fee_percentage = 90000000u64; // 9% (1e9 precision)
     test_utils::set_fee_percentages(&mut scenario, &mut order_manager, taker_fee_percentage, 0);
 
     let amount = 1_000;
@@ -940,14 +940,14 @@ public fun test_settle_variants_down_direction() {
     order::settle_note(&coord2, &mut order_manager, &mut vault, &mut maker_vault, note_id, spot_price_win, &clock, ctx(&mut scenario));
     scenario.return_to_sender(coord2);
 
-    // Calculate expected fee: 0.1% of winning amount (2000)
+    // Calculate expected fee: 9% of winning amount (2000)
     let winning_amount = win_payout - amount; // 2000
-    let expected_fee = (winning_amount * taker_fee_percentage) / types::max_fee_percentage(); // 2
+    let expected_fee = (winning_amount * taker_fee_percentage) / types::max_fee_percentage(); // 180
 
     // Assert event with fee
     order::assert_note_settled_event(note_id, 0, spot_price_win, win_payout, expected_fee);
 
-    let amount_after_fee = winning_amount - expected_fee; // 1998
+    let amount_after_fee = winning_amount - expected_fee; // 1820
 
     // Verify taker balance
     test_scenario::next_tx(&mut scenario, trader1);
