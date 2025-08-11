@@ -89,7 +89,7 @@ public fun test_cannot_deposit_zero_amount() {
 public fun test_withdraw_success() {
     let mut scenario = setup_test_scenario();
     let (_, trader1, trader2, _, _, _, _) = get_test_addresses();
-    let (mut vault, maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
+    let (mut vault, maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none(), none());
     test_scenario::return_shared(maker_vault);
 
     // Mint USDC and deposit into vault
@@ -142,7 +142,7 @@ public fun test_withdraw_success() {
 public fun test_cannot_withdraw_zero_amount() {
     let mut scenario = setup_test_scenario();
     let (_, trader1, trader2, _, _, _, _) = get_test_addresses();
-    let (mut vault, maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
+    let (mut vault, maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none(), none());
     test_scenario::return_shared(maker_vault);
 
     // Mint USDC and deposit into vault
@@ -170,7 +170,7 @@ public fun test_cannot_withdraw_zero_amount() {
 public fun test_can_withdraw_remaining_nonlocked_balance() {
     let mut scenario = setup_test_scenario();
     let (_, trader1, trader2, _, _, _, _) = get_test_addresses();
-    let (mut vault, maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none());
+    let (mut vault, maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none(), none());
     test_scenario::return_shared(maker_vault);
 
     // Mint USDC and deposit into vault

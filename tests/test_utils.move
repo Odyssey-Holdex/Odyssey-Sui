@@ -9,6 +9,7 @@ use odyssey_sui::vault::{Self, Vault, VaultAdminCap, OrderCap};
 use odyssey_sui::maker_vault::{Self, MakerVault, MakerVaultAdminCap, MakerOrderCap};
 use odyssey_sui::order::{Self, OrderManager, OrderAdminCap};
 use sui::test_utils::assert_eq;
+use std::option::none;
 
 // Test token types
 public struct USDC has drop {}
@@ -104,16 +105,24 @@ public fun setup_maker_vault(scenario: &mut Scenario, mut minimum_stake: Option<
 public fun setup_order_manager(
     scenario: &mut Scenario,
     vault_order_cap: OrderCap,
-    maker_order_cap: MakerOrderCap
+    maker_order_cap: MakerOrderCap,
+    mut custom_treasury: Option<address>
 ): (OrderManager<USDC>) {
     let (governor, _, _, _, _, treasury, coordinator) = get_test_addresses();
 
     test_scenario::next_tx(scenario, governor);
     order::test_init(ctx(scenario));
 
+    let used_treasury: address = if (option::is_some(&custom_treasury)) {
+        let treasury_address = option::extract(&mut custom_treasury);
+        treasury_address
+    } else {
+        treasury
+    };
+
     test_scenario::next_tx(scenario, governor);
     let order_admin_cap = scenario.take_from_sender<OrderAdminCap>();
-    let coordinator_cap = order::initialize<USDC>(&order_admin_cap, vault_order_cap, maker_order_cap, treasury, ctx(scenario));
+    let coordinator_cap = order::initialize<USDC>(&order_admin_cap, vault_order_cap, maker_order_cap, used_treasury, ctx(scenario));
     transfer::public_transfer(coordinator_cap, coordinator);
     scenario.return_to_sender(order_admin_cap);
 
@@ -126,7 +135,7 @@ public fun setup_order_manager(
 
 /// Complete system setup
 #[test_only]
-public fun setup_complete_system(scenario: &mut Scenario, minimum_stake: Option<u64>): (
+public fun setup_complete_system(scenario: &mut Scenario, minimum_stake: Option<u64>, custom_treasury: Option<address>): (
     Vault<USDC>,
     MakerVault<USDC, ITHACA>,
     OrderManager<USDC>
@@ -136,7 +145,8 @@ public fun setup_complete_system(scenario: &mut Scenario, minimum_stake: Option<
     let (order_manager) = setup_order_manager(
         scenario, 
         order_cap,
-        maker_order_cap
+        maker_order_cap,
+        custom_treasury
     );
     
     (vault, maker_vault, order_manager)
@@ -206,13 +216,13 @@ public fun create_test_note(
         types::tradable_asset_btc(),        // asset (BTC)
         types::direction_up(),              // direction (UP)
         amount,                             // amount
-        84000,                              // starting_price (84k USD, scaled)
-        15,                                 // spread (15 USD)
+        84000000000000,                     // starting_price (84k USD, 9 decimal precision)
+        15000000000,                        // spread (15 USD, 9 decimal precision)
         win_payout,                         // win_payout
         START_MS + day_to_expire * DAY_MS,  // expiry_time
         0,                                  // nonce
         amount,                             // refund_payout (full refund)
-        10,                                 // almost_win_spread (10 USD)
+        10000000000,                        // almost_win_spread (10 USD, 9 decimal precision)
         amount + (win_payout - amount) / 2, // almost_win_payout (halfway)
         START_MS                            // start_time
     )
@@ -261,12 +271,12 @@ public fun setup_funded_scenario(scenario: &mut Scenario, minimum_stake: Option<
     Clock,
     u64
 ) {
-    let (vault, mut maker_vault, order_manager) = setup_complete_system(scenario, minimum_stake);    
+    let (vault, mut maker_vault, order_manager) = setup_complete_system(scenario, minimum_stake, none());    
     let clock = create_test_clock(scenario, START_MS); // Arbitrary timestamp
 
     // Register and fund maker
     register_test_maker(scenario, &mut maker_vault, MAKER_1, MINIMUM_STAKE);
-    let maker_deposit_amount = 10_000_000;
+    let maker_deposit_amount = 50_000_000_000_000; // 50,000 USDC with 9 decimal precision
     deposit_maker_collateral(scenario, &mut maker_vault, MAKER_1, types::tradable_asset_btc(), maker_deposit_amount);
     
     (vault, maker_vault, order_manager, clock, maker_deposit_amount)
@@ -312,6 +322,23 @@ public fun timestamp_plus_days(clock: &Clock, days: u64): u64 {
 #[test_only]
 public fun timestamp_plus_hours(clock: &Clock, hours: u64): u64 {
     clock::timestamp_ms(clock) + (hours * HOUR_MS)
+}
+
+/// Set both taker and maker fee percentages for testing
+#[test_only]
+public fun set_fee_percentages(
+    scenario: &mut Scenario,
+    order_manager: &mut OrderManager<USDC>,
+    taker_fee_percentage: u64,
+    maker_fee_percentage: u64
+) {
+    let (governor, _, _, _, _, _, _) = get_test_addresses();
+    
+    test_scenario::next_tx(scenario, governor);
+    let admin_cap = scenario.take_from_sender<OrderAdminCap>();
+    order::set_taker_fee_percentage(&admin_cap, order_manager, taker_fee_percentage);
+    order::set_maker_fee_percentage(&admin_cap, order_manager, maker_fee_percentage);
+    scenario.return_to_sender(admin_cap);
 }
 
 /// Cleanup test scenario
