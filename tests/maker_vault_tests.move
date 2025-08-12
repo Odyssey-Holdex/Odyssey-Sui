@@ -706,3 +706,317 @@ public fun test_get_withdrawable_balance_with_locked_view() {
     cleanup_scenario(scenario)
 }
 
+// ==========
+// Multi-Asset Stake Tests
+// ==========
+
+#[test]
+public fun test_multi_asset_deposit_with_sufficient_stake() {
+    let mut scenario = setup_test_scenario();
+    let (governor, _, _, maker1, _, _, _) = get_test_addresses();
+    let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
+    transfer::public_transfer(maker_order_cap, governor);
+
+    let min_stake = get_minimum_stake();
+    let total_stake = min_stake * 3; // Enough for 3 assets
+    
+    // Register maker with enough stake for 3 assets
+    register_test_maker(&mut scenario, &mut maker_vault, maker1, total_stake);
+
+    // First asset deposit should succeed
+    test_scenario::next_tx(&mut scenario, maker1);
+    let btc_amount = 1_000_000;
+    let usdc_btc = mint_usdc(&mut scenario, maker1, btc_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_btc(), usdc_btc, ctx(&mut scenario));
+    maker_vault::assert_collateral_deposited_event(maker1, btc_amount);
+
+    // Second asset deposit should succeed
+    test_scenario::next_tx(&mut scenario, maker1);
+    let eth_amount = 2_000_000;
+    let usdc_eth = mint_usdc(&mut scenario, maker1, eth_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_eth(), usdc_eth, ctx(&mut scenario));
+    maker_vault::assert_collateral_deposited_event(maker1, eth_amount);
+
+    // Third asset deposit should succeed
+    test_scenario::next_tx(&mut scenario, maker1);
+    let sol_amount = 3_000_000;
+    let usdc_sol = mint_usdc(&mut scenario, maker1, sol_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_sol(), usdc_sol, ctx(&mut scenario));
+    maker_vault::assert_collateral_deposited_event(maker1, sol_amount);
+
+    // Verify all deposits were successful
+    test_scenario::next_tx(&mut scenario, maker1);
+    let btc_collateral = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let eth_collateral = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_eth());
+    let sol_collateral = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_sol());
+    assert_eq(btc_collateral, btc_amount);
+    assert_eq(eth_collateral, eth_amount);
+    assert_eq(sol_collateral, sol_amount);
+
+    test_scenario::return_shared(maker_vault);
+    cleanup_scenario(scenario)
+}
+
+#[test]
+#[expected_failure(abort_code = maker_vault::EInsufficientStake)]
+public fun test_multi_asset_deposit_insufficient_stake_for_second_asset() {
+    let mut scenario = setup_test_scenario();
+    let (governor, _, _, maker1, _, _, _) = get_test_addresses();
+    let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
+    transfer::public_transfer(maker_order_cap, governor);
+
+    let min_stake = get_minimum_stake();
+    let total_stake = min_stake + (min_stake / 2); // Only enough for 1.5 assets
+    
+    // Register maker with insufficient stake for 2 assets
+    register_test_maker(&mut scenario, &mut maker_vault, maker1, total_stake);
+
+    // First asset deposit should succeed
+    test_scenario::next_tx(&mut scenario, maker1);
+    let btc_amount = 1_000_000;
+    let usdc_btc = mint_usdc(&mut scenario, maker1, btc_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_btc(), usdc_btc, ctx(&mut scenario));
+
+    // Second asset deposit should fail due to insufficient stake
+    test_scenario::next_tx(&mut scenario, maker1);
+    let eth_amount = 2_000_000;
+    let usdc_eth = mint_usdc(&mut scenario, maker1, eth_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_eth(), usdc_eth, ctx(&mut scenario));
+
+    test_scenario::return_shared(maker_vault);
+    cleanup_scenario(scenario)
+}
+
+#[test]
+#[expected_failure(abort_code = maker_vault::EInsufficientStake)]
+public fun test_multi_asset_deposit_insufficient_stake_for_third_asset() {
+    let mut scenario = setup_test_scenario();
+    let (governor, _, _, maker1, _, _, _) = get_test_addresses();
+    let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
+    transfer::public_transfer(maker_order_cap, governor);
+
+    let min_stake = get_minimum_stake();
+    let total_stake = min_stake * 2 + (min_stake / 2); // Only enough for 2.5 assets
+    
+    // Register maker with insufficient stake for 3 assets
+    register_test_maker(&mut scenario, &mut maker_vault, maker1, total_stake);
+
+    // First two asset deposits should succeed
+    test_scenario::next_tx(&mut scenario, maker1);
+    let btc_amount = 1_000_000;
+    let usdc_btc = mint_usdc(&mut scenario, maker1, btc_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_btc(), usdc_btc, ctx(&mut scenario));
+
+    test_scenario::next_tx(&mut scenario, maker1);
+    let eth_amount = 2_000_000;
+    let usdc_eth = mint_usdc(&mut scenario, maker1, eth_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_eth(), usdc_eth, ctx(&mut scenario));
+
+    // Third asset deposit should fail due to insufficient stake
+    test_scenario::next_tx(&mut scenario, maker1);
+    let sol_amount = 3_000_000;
+    let usdc_sol = mint_usdc(&mut scenario, maker1, sol_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_sol(), usdc_sol, ctx(&mut scenario));
+
+    test_scenario::return_shared(maker_vault);
+    cleanup_scenario(scenario)
+}
+
+#[test]
+public fun test_multi_asset_deposit_with_custom_stake_amounts() {
+    let mut scenario = setup_test_scenario();
+    let (governor, _, _, maker1, _, _, _) = get_test_addresses();
+    let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
+    transfer::public_transfer(maker_order_cap, governor);
+
+    let default_min_stake = get_minimum_stake();
+    let custom_btc_stake = default_min_stake * 2; // BTC requires double stake
+    let custom_eth_stake = default_min_stake * 3; // ETH requires triple stake
+    
+    // Set custom minimum stake amounts
+    test_scenario::next_tx(&mut scenario, governor);
+    let admin_cap = scenario.take_from_sender<MakerVaultAdminCap>();
+    maker_vault::set_custom_min_stake_amount(&admin_cap, &mut maker_vault, types::tradable_asset_btc(), custom_btc_stake);
+    maker_vault::set_custom_min_stake_amount(&admin_cap, &mut maker_vault, types::tradable_asset_eth(), custom_eth_stake);
+    scenario.return_to_sender(admin_cap);
+
+    // Register maker with enough stake for BTC + ETH + SOL (2x + 3x + 1x = 6x default)
+    let total_stake = default_min_stake * 6;
+    register_test_maker(&mut scenario, &mut maker_vault, maker1, total_stake);
+
+    // BTC deposit should succeed (uses 2x stake)
+    test_scenario::next_tx(&mut scenario, maker1);
+    let btc_amount = 1_000_000;
+    let usdc_btc = mint_usdc(&mut scenario, maker1, btc_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_btc(), usdc_btc, ctx(&mut scenario));
+    maker_vault::assert_collateral_deposited_event(maker1, btc_amount);
+
+    // ETH deposit should succeed (uses 3x stake)
+    test_scenario::next_tx(&mut scenario, maker1);
+    let eth_amount = 2_000_000;
+    let usdc_eth = mint_usdc(&mut scenario, maker1, eth_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_eth(), usdc_eth, ctx(&mut scenario));
+    maker_vault::assert_collateral_deposited_event(maker1, eth_amount);
+
+    // SOL deposit should succeed (uses 1x stake)
+    test_scenario::next_tx(&mut scenario, maker1);
+    let sol_amount = 3_000_000;
+    let usdc_sol = mint_usdc(&mut scenario, maker1, sol_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_sol(), usdc_sol, ctx(&mut scenario));
+    maker_vault::assert_collateral_deposited_event(maker1, sol_amount);
+
+    test_scenario::return_shared(maker_vault);
+    cleanup_scenario(scenario)
+}
+
+#[test]
+#[expected_failure(abort_code = maker_vault::EInsufficientStake)]
+public fun test_multi_asset_deposit_insufficient_stake_with_custom_amounts() {
+    let mut scenario = setup_test_scenario();
+    let (governor, _, _, maker1, _, _, _) = get_test_addresses();
+    let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
+    transfer::public_transfer(maker_order_cap, governor);
+
+    let default_min_stake = get_minimum_stake();
+    let custom_btc_stake = default_min_stake * 2; // BTC requires double stake
+    
+    // Set custom minimum stake amount for BTC
+    test_scenario::next_tx(&mut scenario, governor);
+    let admin_cap = scenario.take_from_sender<MakerVaultAdminCap>();
+    maker_vault::set_custom_min_stake_amount(&admin_cap, &mut maker_vault, types::tradable_asset_btc(), custom_btc_stake);
+    scenario.return_to_sender(admin_cap);
+
+    // Register maker with enough stake for BTC + ETH but not BTC + ETH + SOL
+    let total_stake = default_min_stake * 3; // 2x for BTC + 1x for ETH = 3x total
+    register_test_maker(&mut scenario, &mut maker_vault, maker1, total_stake);
+
+    // BTC deposit should succeed (uses 2x stake)
+    test_scenario::next_tx(&mut scenario, maker1);
+    let btc_amount = 1_000_000;
+    let usdc_btc = mint_usdc(&mut scenario, maker1, btc_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_btc(), usdc_btc, ctx(&mut scenario));
+
+    // ETH deposit should succeed (uses 1x stake)
+    test_scenario::next_tx(&mut scenario, maker1);
+    let eth_amount = 2_000_000;
+    let usdc_eth = mint_usdc(&mut scenario, maker1, eth_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_eth(), usdc_eth, ctx(&mut scenario));
+
+    // SOL deposit should fail (no remaining stake)
+    test_scenario::next_tx(&mut scenario, maker1);
+    let sol_amount = 3_000_000;
+    let usdc_sol = mint_usdc(&mut scenario, maker1, sol_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_sol(), usdc_sol, ctx(&mut scenario));
+
+    test_scenario::return_shared(maker_vault);
+    cleanup_scenario(scenario)
+}
+
+#[test]
+public fun test_multi_asset_deposit_after_withdrawing_collateral() {
+    let mut scenario = setup_test_scenario();
+    let (_, _, _, maker1, _, _, _) = get_test_addresses();
+    let (vault_unused, mut maker_vault, mut order_manager) = setup_complete_system(&mut scenario, none(), none());
+
+    let min_stake = get_minimum_stake();
+    let total_stake = min_stake * 2; // Enough for 2 assets
+    
+    // Register maker with enough stake for 2 assets
+    register_test_maker(&mut scenario, &mut maker_vault, maker1, total_stake);
+
+    // Deposit BTC and ETH
+    test_scenario::next_tx(&mut scenario, maker1);
+    let btc_amount = 1_000_000;
+    let usdc_btc = mint_usdc(&mut scenario, maker1, btc_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_btc(), usdc_btc, ctx(&mut scenario));
+
+    test_scenario::next_tx(&mut scenario, maker1);
+    let eth_amount = 2_000_000;
+    let usdc_eth = mint_usdc(&mut scenario, maker1, eth_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_eth(), usdc_eth, ctx(&mut scenario));
+
+    // Withdraw all BTC collateral
+    test_scenario::next_tx(&mut scenario, maker1);
+    let withdrawn_btc = order::maker_withdraw(&mut order_manager, &mut maker_vault, types::tradable_asset_btc(), btc_amount, ctx(&mut scenario));
+    validate_coin_and_transfer_back(&mut scenario, withdrawn_btc, maker1, btc_amount);
+
+    // Now should be able to deposit SOL (BTC stake is freed up)
+    test_scenario::next_tx(&mut scenario, maker1);
+    let sol_amount = 3_000_000;
+    let usdc_sol = mint_usdc(&mut scenario, maker1, sol_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_sol(), usdc_sol, ctx(&mut scenario));
+    maker_vault::assert_collateral_deposited_event(maker1, sol_amount);
+
+    // Verify final state
+    test_scenario::next_tx(&mut scenario, maker1);
+    let btc_collateral = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let eth_collateral = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_eth());
+    let sol_collateral = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_sol());
+    assert_eq(btc_collateral, 0);
+    assert_eq(eth_collateral, eth_amount);
+    assert_eq(sol_collateral, sol_amount);
+
+    test_scenario::return_shared(vault_unused);
+    test_scenario::return_shared(maker_vault);
+    test_scenario::return_shared(order_manager);
+    cleanup_scenario(scenario)
+}
+
+#[test]
+public fun test_can_deposit_collateral_view_function() {
+    let mut scenario = setup_test_scenario();
+    let (governor, _, _, maker1, _, _, _) = get_test_addresses();
+    let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
+    transfer::public_transfer(maker_order_cap, governor);
+
+    let min_stake = get_minimum_stake();
+    let total_stake = min_stake * 2; // Enough for 2 assets
+    
+    // Register maker
+    register_test_maker(&mut scenario, &mut maker_vault, maker1, total_stake);
+
+    // Test can_deposit_collateral view function BEFORE any deposits
+    test_scenario::next_tx(&mut scenario, maker1);
+    let can_deposit_btc = maker_vault::can_deposit_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let can_deposit_eth = maker_vault::can_deposit_collateral(&maker_vault, maker1, &types::tradable_asset_eth());
+    let can_deposit_sol = maker_vault::can_deposit_collateral(&maker_vault, maker1, &types::tradable_asset_sol());
+    assert_eq(can_deposit_btc, true); // Can deposit BTC (has 2x stake, needs 1x)
+    assert_eq(can_deposit_eth, true); // Can deposit ETH (has 2x stake, needs 1x)
+    assert_eq(can_deposit_sol, true); // Can deposit SOL (has 2x stake, needs 1x)
+
+    // Deposit BTC and verify view function prediction was correct
+    test_scenario::next_tx(&mut scenario, maker1);
+    let btc_amount = 1_000_000;
+    let usdc_btc = mint_usdc(&mut scenario, maker1, btc_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_btc(), usdc_btc, ctx(&mut scenario));
+    maker_vault::assert_collateral_deposited_event(maker1, btc_amount);
+
+    // Test can_deposit_collateral view function AFTER BTC deposit
+    test_scenario::next_tx(&mut scenario, maker1);
+    let can_deposit_btc_after = maker_vault::can_deposit_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let can_deposit_eth_after = maker_vault::can_deposit_collateral(&maker_vault, maker1, &types::tradable_asset_eth());
+    let can_deposit_sol_after = maker_vault::can_deposit_collateral(&maker_vault, maker1, &types::tradable_asset_sol());
+    assert_eq(can_deposit_btc_after, true); // Can still deposit BTC (already has it)
+    assert_eq(can_deposit_eth_after, true); // Can deposit ETH (1 stake remaining)
+    assert_eq(can_deposit_sol_after, true); // Can deposit SOL (1 stake remaining)
+
+    // Deposit ETH and verify view function prediction was correct
+    test_scenario::next_tx(&mut scenario, maker1);
+    let eth_amount = 2_000_000;
+    let usdc_eth = mint_usdc(&mut scenario, maker1, eth_amount);
+    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_eth(), usdc_eth, ctx(&mut scenario));
+    maker_vault::assert_collateral_deposited_event(maker1, eth_amount);
+
+    // Test can_deposit_collateral view function AFTER both deposits
+    test_scenario::next_tx(&mut scenario, maker1);
+    let can_deposit_btc_final = maker_vault::can_deposit_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let can_deposit_eth_final = maker_vault::can_deposit_collateral(&maker_vault, maker1, &types::tradable_asset_eth());
+    let can_deposit_sol_final = maker_vault::can_deposit_collateral(&maker_vault, maker1, &types::tradable_asset_sol());
+    assert_eq(can_deposit_btc_final, true); // Can still deposit BTC (already has it)
+    assert_eq(can_deposit_eth_final, true); // Can still deposit ETH (already has it)
+    assert_eq(can_deposit_sol_final, false); // Cannot deposit SOL (no stake remaining)
+
+    test_scenario::return_shared(maker_vault);
+    cleanup_scenario(scenario)
+}
+
