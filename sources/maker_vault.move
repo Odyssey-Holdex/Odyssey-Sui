@@ -449,37 +449,42 @@ public fun can_deposit_collateral<T, IthacaType>(
         let maker_info = table::borrow(&vault.makers, maker);
         let staked_tokens = types::maker_info_staked_tokens(maker_info);
         let mut remaining_staked = staked_tokens;
+        let current_collateral = types::maker_info_collateral(maker_info, tradable_asset);
+        if (current_collateral > 0) {
+            // If already has collateral, no need to check staked tokens
+            true
+        } else {
+            let btc_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_btc());
+            let eth_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_eth());
+            let sol_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_sol());
+            let xau_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_xau());
+            let mstr_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_mstr());
 
-        let btc_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_btc());
-        let eth_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_eth());
-        let sol_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_sol());
-        let xau_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_xau());
-        let mstr_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_mstr());
+            if (btc_collateral > 0) {
+                let btc_stake = get_min_stake_amount(vault, &types::tradable_asset_btc());
+                remaining_staked = remaining_staked - btc_stake;
+            };
+            if (eth_collateral > 0) {
+                let eth_stake = get_min_stake_amount(vault, &types::tradable_asset_eth());
+                remaining_staked = remaining_staked - eth_stake;
+            };
+            if (sol_collateral > 0) {
+                let sol_stake = get_min_stake_amount(vault, &types::tradable_asset_sol());
+                remaining_staked = remaining_staked - sol_stake;
+            };
+            if (xau_collateral > 0) {
+                let xau_stake = get_min_stake_amount(vault, &types::tradable_asset_xau());
+                remaining_staked = remaining_staked - xau_stake;
+            };
+            if (mstr_collateral > 0) {
+                let mstr_stake = get_min_stake_amount(vault, &types::tradable_asset_mstr());
+                remaining_staked = remaining_staked - mstr_stake;
+            };
 
-        if (btc_collateral > 0) {
-            let btc_stake = get_min_stake_amount(vault, &types::tradable_asset_btc());
-            remaining_staked = remaining_staked - btc_stake;
-        };
-        if (eth_collateral > 0) {
-            let eth_stake = get_min_stake_amount(vault, &types::tradable_asset_eth());
-            remaining_staked = remaining_staked - eth_stake;
-        };
-        if (sol_collateral > 0) {
-            let sol_stake = get_min_stake_amount(vault, &types::tradable_asset_sol());
-            remaining_staked = remaining_staked - sol_stake;
-        };
-        if (xau_collateral > 0) {
-            let xau_stake = get_min_stake_amount(vault, &types::tradable_asset_xau());
-            remaining_staked = remaining_staked - xau_stake;
-        };
-        if (mstr_collateral > 0) {
-            let mstr_stake = get_min_stake_amount(vault, &types::tradable_asset_mstr());
-            remaining_staked = remaining_staked - mstr_stake;
-        };
-
-        // Check if remaining staked tokens are enough for the new deposit
-        let min_stake = get_min_stake_amount(vault, tradable_asset);
-        remaining_staked >= min_stake
+            // Check if remaining staked tokens are enough for the new deposit
+            let min_stake = get_min_stake_amount(vault, tradable_asset);
+            remaining_staked >= min_stake
+        }
     } else {
         false
     }
