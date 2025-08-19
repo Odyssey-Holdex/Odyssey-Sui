@@ -3,7 +3,8 @@ import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { Transaction } from '@mysten/sui/transactions';
 
 // Static package ID for ithaca_token package. Replace with your deployed package ID.
-const PACKAGE_ID = '0x56a3ebc8fa65d0abc5fcc4a617ae898e239909a5b341d90a1139dab707039983';
+const PACKAGE_ID = '0x07f4f6d476db10680282778a85be596ded56cbefed6d2a1a416337f9b51446e9';
+const TREASURY_CAPABILITY_ID = '0x57751c4ba66bcbcb33bb290ba5bc67e31ef3d73b9d1c46073562fd4742494dac' // get from the deployments folder, check the latest deployment, objectChanges, and get the TreasuryCap object ID
 
 interface CliArgs {
   address?: string;
@@ -76,25 +77,11 @@ async function main(): Promise<void> {
   const privateKey = requireEnv('PRIVATE_KEY');
   const signer = Ed25519Keypair.fromSecretKey(privateKey);
 
-  const ithacaType = `${PACKAGE_ID}::ithaca::ITHACA`;
-  const treasuryCapType = `0x2::coin::TreasuryCap<${ithacaType}>`;
-
-  const owned = await client.getOwnedObjects({
-    owner: signer.toSuiAddress(),
-    filter: { StructType: treasuryCapType },
-    options: { showContent: true },
-  });
-
-  const treasuryCapObjectId = owned.data[0]?.data?.objectId as string | undefined;
-  if (!treasuryCapObjectId) {
-    throw new Error(`TreasuryCap not found for type ${treasuryCapType}`);
-  }
-
   const tx = new Transaction();
   tx.moveCall({
     target: `${PACKAGE_ID}::ithaca::mint`,
     arguments: [
-      tx.object(treasuryCapObjectId),
+      tx.object(TREASURY_CAPABILITY_ID),
       tx.pure.u64(amount as string),
       tx.pure.address(address as string),
     ],
