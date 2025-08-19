@@ -10,7 +10,7 @@ if (!process.env.PRIVATE_KEY) {
 }
 const signer = Ed25519Keypair.fromSecretKey(process.env.PRIVATE_KEY);
 
-const PACKAGE_ID = '0x4c5598004b6a3c9f0860477a2d1d8f2bea082129f69b38e60355b27e43aa4d40'
+const PACKAGE_ID = ''
 const PUBLISH_NEW_PACKAGE = false
 
 const addresses = {
@@ -19,7 +19,7 @@ const addresses = {
     mainnet: '0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC'
   },
   ithaca: {
-    testnet: '0x56a3ebc8fa65d0abc5fcc4a617ae898e239909a5b341d90a1139dab707039983::ithaca::ITHACA',
+    testnet: '0x098cf6cd93b90fd1c7e693575c5762e063ea921b92f646be7763e21e6387e76d::ithaca::ITHACA',
     mainnet: '0xa8871e2b78b9e2462fd2d44560cefcc5d2ecba97028a1ad06a4c63b55fc49e81::ithaca::ITHACA'
   }
 } satisfies Record<string, { testnet: string, mainnet: string }>
