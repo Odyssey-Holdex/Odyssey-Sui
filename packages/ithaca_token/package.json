@@ -1,0 +1,14 @@
+{
+	"dependencies": {
+		"@mysten/sui": "^1.37.3"
+	},
+	"scripts": {
+		"deploy": "tsx --env-file=.env scripts/deploy.ts",
+		"mint": "tsx --env-file=.env scripts/mint.ts"
+	},
+	"devDependencies": {
+		"@types/node": "^24.3.0",
+		"tsx": "^4.20.4",
+		"typescript": "^5.9.2"
+	}
+}

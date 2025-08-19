@@ -1,0 +1,9 @@
+[package]
+name = "ithaca_token"
+edition = "2024.beta"
+published-at = "0x0"
+
+[dependencies]
+
+[addresses]
+ithaca_token = "0x0" 
