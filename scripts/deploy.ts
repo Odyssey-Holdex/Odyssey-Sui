@@ -19,7 +19,7 @@ const addresses = {
     mainnet: '0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC'
   },
   ithaca: {
-    testnet: '0x098cf6cd93b90fd1c7e693575c5762e063ea921b92f646be7763e21e6387e76d::ithaca::ITHACA',
+    testnet: '0x07f4f6d476db10680282778a85be596ded56cbefed6d2a1a416337f9b51446e9::ithaca::ITHACA',
     mainnet: '0xa8871e2b78b9e2462fd2d44560cefcc5d2ecba97028a1ad06a4c63b55fc49e81::ithaca::ITHACA'
   }
 } satisfies Record<string, { testnet: string, mainnet: string }>
