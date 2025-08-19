@@ -1,6 +1,6 @@
-# Trading Vault System - SUI Move Migration
+# Odyssey SUI Packages
 
-This project contains the SUI Move migration of Solidity trading vault contracts. The system enables prediction market trading with deposits, withdrawals, and automated settlement.
+This project contains the SUI Move version of existing Solidity Odyssey contracts. The system enables prediction market trading with deposits, withdrawals, and automated settlement.
 
 ## 🏗️ **Architecture Overview**
 
@@ -9,15 +9,7 @@ This project contains the SUI Move migration of Solidity trading vault contracts
 - **`types.move`** - Shared data structures and enums
 - **`vault.move`** - Asset management and balance tracking
 - **`order.move`** - Trading note creation and settlement
-- **`example.move`** - Usage examples and integration helpers
-
-### **Key Features:**
-
-✅ **Multi-asset support** via generics (`Vault<T>`)  
-✅ **Capability-based security** (no centralized owner)  
-✅ **Automated settlement** with multiple outcome types  
-✅ **Balance locking** for active trades  
-✅ **Event emission** for transparency
+- **`maker_vault.move`** - Maker vault for managing maker balances
 
 ## 🚀 **Quick Start**
 
@@ -33,203 +25,120 @@ sui move build
 sui move test
 ```
 
-### **3. Deploy to Devnet**
+### **3. Environment Setup**
+
+Create a `.env` file in the root directory with the following variables:
 
 ```bash
-sui client publish --gas-budget 20000000
+PRIVATE_KEY=your_private_key_here
+NETWORK=testnet|mainnet
 ```
 
-## 💻 **Usage Examples**
-
-### **Initialize the System**
-
-```move
-use odyssey_sui::example;
-
-// Initialize vault and order manager
-let (vault_admin_cap, order_admin_cap, vault, order_manager) =
-    example::initialize_trading_system(ctx);
+**Example:**
+```bash
+PRIVATE_KEY=0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+NETWORK=testnet
 ```
 
-### **Deposit Assets**
+> **⚠️ Security Note:** Never commit your `.env` file to version control.
 
-```move
-// User deposits SUI tokens
-let payment = coin::mint_for_testing<SUI>(1000, ctx);
-example::example_deposit(&mut vault, payment, ctx);
+## 🚀 **Deployment**
+
+### **Deploy to Testnet/Mainnet**
+
+The deployment consists of 2 steps:
+1. **Packages deployment** - Deploy the Move contracts
+2. **System initialization** - Set up the initial system state
+
+> **Note:** You can skip the first step and initialize the system using existing deployed packages by setting `PUBLISH_NEW_PACKAGE` to `false` in the `deploy.ts` script.
+
+```bash
+pnpm run deploy 
 ```
 
-### **Create Trading Note**
+### **Deploy ITHACA Token (Optional)**
 
-```move
-// Create a BTC price prediction
-let note_id = example::example_create_note(
-    &mut order_manager,
-    maker_address,
-    100,        // bet amount
-    50000,      // starting price ($500.00)
-    Direction::UP,  // predict price will go up
-    &clock,
-    ctx
-);
+To initialize the system, you need two token types:
+- **USDC token type** (existing on testnet)
+- **ITHACA token type** (custom token for this project)
+
+This repository includes a pre-configured ITHACA token deployment. If you want to deploy a new ITHACA token:
+
+```bash
+cd packages/ithaca_token
+pnpm run deploy
 ```
 
-### **Settle Order**
+> **Note:** The `.env` file with `PRIVATE_KEY` and `NETWORK` is also required for ITHACA token deployment.
 
-```move
-// Settle with final price after expiry
-example::example_settle_note(
-    &mut order_manager,
-    note_id,
-    52000,      // final price ($520.00)
-    &clock,
-    ctx
-);
+#### **Mint ITHACA Tokens**
+
+To mint ITHACA tokens to a specific address:
+
+```bash
+pnpm run mint -a <ADDRESS> -n <AMOUNT>
 ```
 
-## 📊 **Data Structures**
-
-### **TradableAsset**
-
-```move
-public struct TradableAsset {
-    symbol: String,  // "BTC", "ETH", etc.
-}
+**Example:**
+```bash
+pnpm run mint -a 0x1234567890abcdef -n 1000
 ```
 
-### **Trading Note**
+> **Note:** The `.env` file with `PRIVATE_KEY` and `NETWORK` is required for minting operations.
 
-```move
-public struct Note {
-    taker: address,          // Trader's address
-    maker: address,          // Market maker's address
-    asset: TradableAsset,    // Asset being traded
-    direction: Direction,    // UP or DOWN
-    amount: u64,             // Bet amount
-    starting_price: u64,     // Price at creation
-    spread: u64,             // Required price movement
-    win_payout: u64,         // Payout if correct
-    expiry_time: u64,        // Settlement deadline
-    nonce: u64,              // Unique identifier
-    refund_payout: u64,      // Payout if refunded
-}
-```
-
-### **Outcome Types**
-
-- **WIN** - Prediction correct, full payout
-- **LOSS** - Prediction incorrect, no payout
-- **REFUND** - Price moved but within refund zone
-- **ALMOST_WIN** - Close to correct, partial payout
-
-## 🔐 **Security Model**
-
-### **Capabilities (vs Solidity's `onlyOwner`)**
-
-| **Capability**  | **Permissions**                  | **Use Case**     |
-| --------------- | -------------------------------- | ---------------- |
-| `VaultAdminCap` | Configure vault settings         | Admin operations |
-| `OrderCap`      | Adjust balances, transfer assets | Order settlement |
-
-### **Access Control Flow**
+## 📁 **Project Structure**
 
 ```
-VaultAdminCap → Configure vault settings
-OrderCap → Called by order module for settlements
-Public functions → Deposit/withdraw by users
+odyssey-sui/
+├── sources/                 # Move contract source files
+│   ├── types.move          # Shared data structures
+│   ├── vault.move          # Asset management
+│   ├── order.move          # Trading functionality
+│   └── maker_vault.move    # Maker vault management
+├── packages/
+│   └── ithaca_token/       # ITHACA token implementation
+├── scripts/
+│   └── deploy.ts           # Deployment script
+└── tests/                  # Test files
 ```
 
-## 🔄 **Migration Differences**
+## 🔧 **Development**
 
-### **From Solidity to Move:**
+### **Prerequisites**
 
-| **Solidity**                  | **SUI Move**          | **Benefit**          |
-| ----------------------------- | --------------------- | -------------------- |
-| `mapping(address => uint256)` | `Table<address, u64>` | Dynamic storage      |
-| `onlyOwner` modifier          | Capability system     | Granular permissions |
-| `SafeERC20`                   | `Coin<T>` framework   | Type safety          |
-| Interface contracts           | Native modules        | Direct calls         |
-| Manual overflow checks        | Built-in safety       | Automatic protection |
+- [Sui CLI](https://docs.sui.io/build/install)
+- [Node.js](https://nodejs.org/) (v16 or higher)
+- [pnpm](https://pnpm.io/) package manager
 
-### **Enhanced Features:**
+### **Install Dependencies**
 
-- **Generic coin support** - Works with any `Coin<T>` type
-- **Shared objects** - Multiple modules can interact safely
-- **Rich event system** - Better monitoring capabilities
-- **Object ownership** - Clear ownership semantics
-
-## 🧪 **Testing**
+```bash
+pnpm install
+```
 
 ### **Run All Tests**
 
 ```bash
-sui move test
+pnpm test
 ```
 
-### **Test Coverage:**
+## 📚 **Documentation**
 
-- ✅ Vault deposit/withdrawal
-- ✅ Note creation and validation
-- ✅ Balance locking mechanisms
-- ✅ Settlement outcome logic
+For detailed information about the Move contracts and their functionality, refer to the inline documentation in the source files:
 
-## 🚀 **Deployment**
-
-### **Testnet Deployment**
-
-```bash
-# Switch to testnet
-sui client switch --env testnet
-
-# Publish package
-sui client publish --gas-budget 20000000
-
-# Note the package ID for frontend integration
-```
-
-### **Mainnet Considerations**
-
-- Audit all modules before mainnet deployment
-- Test extensively on testnet first
-- Consider upgrade policies for modules
-- Implement proper monitoring and alerting
-
-## 📚 **Advanced Usage**
-
-### **Integration with Frontend**
-
-```typescript
-// TypeScript SDK integration example
-const vault = new VaultClient(packageId)
-await vault.deposit(coinAmount)
-const note = await vault.createNote({
-  maker: makerAddress,
-  amount: betAmount,
-  direction: 'UP',
-  // ...other parameters
-})
-```
-
-### **Custom Asset Support**
-
-```move
-// Create vault for custom coin type
-let (admin_cap, order_cap, vault) = vault::initialize<MY_COIN>(ctx);
-```
+- `sources/types.move` - Data structure definitions
+- `sources/vault.move` - Vault operations and balance management
+- `sources/order.move` - Order creation and settlement logic
+- `sources/maker_vault.move` - Maker vault operations
 
 ## 🤝 **Contributing**
 
 1. Fork the repository
 2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
+3. Make your changes
+4. Add tests for new functionality
 5. Submit a pull request
 
 ## 📄 **License**
 
-This project maintains the same license as the original Solidity contracts.
-
----
-
-**Migration completed successfully! 🎉**  
-All original functionality preserved with enhanced security and SUI-native optimizations.
+This project is licensed under the MIT License.
