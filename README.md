@@ -76,6 +76,7 @@ pnpm run deploy
 To mint ITHACA tokens to a specific address:
 
 ```bash
+# Make sure you are inside packages/ithaca_token folder
 pnpm run mint -a <ADDRESS> -n <AMOUNT>
 ```
 
