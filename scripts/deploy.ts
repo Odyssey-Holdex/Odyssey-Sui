@@ -10,7 +10,7 @@ if (!process.env.PRIVATE_KEY) {
 }
 const signer = Ed25519Keypair.fromSecretKey(process.env.PRIVATE_KEY);
 
-const PACKAGE_ID = ''
+const PACKAGE_ID = '0xc41efbfa0abaff26446289270e71d8fcd6828d5061f869867f42be8e7f0ca449'
 const PUBLISH_NEW_PACKAGE = false
 
 const addresses = {
@@ -33,6 +33,11 @@ const MINIMUM_STAKE_AMOUNT = '500000000000' // 500,000 ITHACA, with 6 decimals
 
 async function main() {
   let packageId = PACKAGE_ID
+  const path = './deployments'
+  const timestamp = new Date().toISOString()
+  if (!fs.existsSync(path)) {
+    fs.mkdirSync(path)
+  }
   if (!PACKAGE_ID || PUBLISH_NEW_PACKAGE) {
     // 1. Publish package (via CLI, but capture JSON)
     const publishResult = JSON.parse(
@@ -49,12 +54,7 @@ async function main() {
     }
 
     // 3. Save publish result to deployments folder
-    const timestamp = new Date().toISOString()
-    const path = './deployments'
-    if (!fs.existsSync(path)) {
-      fs.mkdirSync(path)
-    }
-    fs.writeFileSync(`${path}/${timestamp}.json`, JSON.stringify(publishResult, null, 2), { flag: 'w' })
+    fs.writeFileSync(`${path}/${timestamp}-1-publish.json`, JSON.stringify(publishResult, null, 2), { flag: 'w' })
   
     console.log('Deployed packageId:', packageId);
   }
@@ -104,11 +104,12 @@ async function main() {
   })
   tx.transferObjects([coordinatorCap], COORDINATOR)
 
-  await client.signAndExecuteTransaction({
+  const initializeRes = await client.signAndExecuteTransaction({
     signer,
     transaction: tx,
-    options: { showEffects: true },
+    options: { showEffects: true, showObjectChanges: true },
   });
+  fs.writeFileSync(`${path}/${timestamp}-2-initialize.json`, JSON.stringify(initializeRes, null, 2), { flag: 'w' })
   console.log('Finished initialize')
 }
 
