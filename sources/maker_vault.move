@@ -517,6 +517,19 @@ public fun get_maker_collateral<T, IthacaType>(
     }
 }
 
+/// Get maker collaterals for all assets
+public fun get_maker_collaterals<T, IthacaType>(
+    vault: &MakerVault<T, IthacaType>,
+    maker: address,
+): types::MakerInfo {
+    if (table::contains(&vault.makers, maker)) {
+        let maker_info = table::borrow(&vault.makers, maker);
+        (*maker_info)
+    } else {
+        (types::new_maker_info(0))
+    }
+}
+
 
 /// Get withdrawable balance considering locked amounts in orders
 public fun get_withdrawable_balance_with_locked<T, IthacaType>(
