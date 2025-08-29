@@ -158,8 +158,6 @@ public fun withdraw<T>(
         table::add(&mut vault.taker_balances, taker, current_balance - amount);
     };
 
-    
-
     // Extract coin from vault balance
     let withdrawn_balance = balance::split(&mut vault.balance, amount);
     let withdrawn_coin = coin::from_balance(withdrawn_balance, ctx);

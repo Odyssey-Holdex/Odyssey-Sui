@@ -4,14 +4,14 @@ import { Transaction } from "@mysten/sui/transactions";
 import { execSync } from 'child_process';
 import fs from 'fs'
 
-const client = new SuiClient({ url: getFullnodeUrl('testnet') });
 if (!process.env.PRIVATE_KEY) {
   throw new Error('PRIVATE_KEY is not set');
 }
-const signer = Ed25519Keypair.fromSecretKey(process.env.PRIVATE_KEY);
+const privateKey = process.env.PRIVATE_KEY
+const signer = Ed25519Keypair.fromSecretKey(privateKey);
 
-const PACKAGE_ID = '0xc41efbfa0abaff26446289270e71d8fcd6828d5061f869867f42be8e7f0ca449'
-const PUBLISH_NEW_PACKAGE = false
+const PACKAGE_ID = ''
+const PUBLISH_NEW_PACKAGE = true
 
 const addresses = {
   usdc: {
@@ -24,11 +24,12 @@ const addresses = {
   }
 } satisfies Record<string, { testnet: string, mainnet: string }>
 const network = process.env.NETWORK === 'mainnet' ? 'mainnet' : 'testnet'
+const client = new SuiClient({ url: getFullnodeUrl(network) });
 
 const USDC = addresses.usdc[network]
 const ITHACA = addresses.ithaca[network]
-const COORDINATOR = '0x816d80321564335bcada156554ee4dc6fa6993e961a18287dc7bf9219bdd05dd'
-const TREASURY = '0x816d80321564335bcada156554ee4dc6fa6993e961a18287dc7bf9219bdd05dd'
+const COORDINATOR = '0xa6530e38f99108ac73ab8a7eb8e2e1f7428026d8c1e8495711bed5a4ee713cd0'
+const TREASURY = '0x70535d3307069dd395c4ee6f5fea5bd5dab2b41c2b9c54d037f9fdb41a044a6f'
 const MINIMUM_STAKE_AMOUNT = '500000000000' // 500,000 ITHACA, with 6 decimals
 
 async function main() {
@@ -40,8 +41,10 @@ async function main() {
   }
   if (!PACKAGE_ID || PUBLISH_NEW_PACKAGE) {
     // 1. Publish package (via CLI, but capture JSON)
+    execSync(`sui keytool import ${privateKey} ed25519`)
+    execSync(`sui client switch --env ${network}`)
     const publishResult = JSON.parse(
-      execSync('sui client publish --json').toString()
+      execSync(`sui client publish --json --sender ${signer.toSuiAddress()}`).toString()
     );
   
     // 2. Extract packageId
@@ -54,7 +57,7 @@ async function main() {
     }
 
     // 3. Save publish result to deployments folder
-    fs.writeFileSync(`${path}/${timestamp}-1-publish.json`, JSON.stringify(publishResult, null, 2), { flag: 'w' })
+    fs.writeFileSync(`${path}/${network}-${timestamp}-1-publish.json`, JSON.stringify(publishResult, null, 2), { flag: 'w' })
   
     console.log('Deployed packageId:', packageId);
   }
@@ -109,7 +112,7 @@ async function main() {
     transaction: tx,
     options: { showEffects: true, showObjectChanges: true },
   });
-  fs.writeFileSync(`${path}/${timestamp}-2-initialize.json`, JSON.stringify(initializeRes, null, 2), { flag: 'w' })
+  fs.writeFileSync(`${path}/${network}-${timestamp}-2-initialize.json`, JSON.stringify(initializeRes, null, 2), { flag: 'w' })
   console.log('Finished initialize')
 }
 
