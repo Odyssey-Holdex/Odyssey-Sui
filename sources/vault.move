@@ -185,7 +185,7 @@ entry fun migrate<T>(vault: &mut Vault<T>, admin_cap: &VaultAdminCap) {
 // === Order Module Functions (restricted) ===
 
 /// Transfer assets to maker vault (order module only)
-public fun transfer_to_maker_vault<T>(
+public(package) fun transfer_to_maker_vault<T>(
     _: &OrderCap,
     vault: &mut Vault<T>,
     amount: u64,
@@ -198,7 +198,7 @@ public fun transfer_to_maker_vault<T>(
 
 /// Adjust taker balance (order module only)
 /// Used to credit/debit taker balance based on trade outcomes
-public fun adjust_taker_balance<T>(
+public(package) fun adjust_taker_balance<T>(
     _: &OrderCap,
     vault: &mut Vault<T>,
     taker: address,
@@ -226,7 +226,7 @@ public fun adjust_taker_balance<T>(
 }
 
 /// Transfer fee to treasury (order module only)
-public fun transfer_fee_to_treasury<T>(
+public(package) fun transfer_fee_to_treasury<T>(
     _: &OrderCap,
     vault: &mut Vault<T>,
     taker: address,
@@ -249,7 +249,7 @@ public fun transfer_fee_to_treasury<T>(
 
 /// Add funds to vault from outside (order module only)
 /// Used when funds are transferred from maker vault to trader vault
-public fun add_funds<T>(
+public(package) fun add_funds<T>(
     _: &OrderCap,
     vault: &mut Vault<T>,
     payment: Coin<T>,

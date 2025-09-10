@@ -369,7 +369,7 @@ public fun set_custom_min_stake_amount<T, IthacaType>(
 // === Order Module Functions (restricted) ===
 
 /// Transfer collateral to taker vault (order module only)
-public fun transfer_to_taker_vault<T, IthacaType>(
+public(package) fun transfer_to_taker_vault<T, IthacaType>(
     _: &MakerOrderCap,
     vault: &mut MakerVault<T, IthacaType>,
     amount: u64,
@@ -381,7 +381,7 @@ public fun transfer_to_taker_vault<T, IthacaType>(
 }
 
 /// Adjust maker balance (order module only)
-public fun adjust_maker_balance<T, IthacaType>(
+public(package) fun adjust_maker_balance<T, IthacaType>(
     _: &MakerOrderCap,
     vault: &mut MakerVault<T, IthacaType>,
     maker: address,
@@ -404,7 +404,7 @@ public fun adjust_maker_balance<T, IthacaType>(
 }
 
 /// Transfer fee to treasury (order module only)
-public fun transfer_fee_to_treasury<T, IthacaType>(
+public(package) fun transfer_fee_to_treasury<T, IthacaType>(
     _: &MakerOrderCap,
     vault: &mut MakerVault<T, IthacaType>,
     maker: address,
@@ -426,7 +426,7 @@ public fun transfer_fee_to_treasury<T, IthacaType>(
 
 /// Add funds to vault from outside (order module only)
 /// Used when funds are transferred from taker vault to maker vault
-public fun add_funds<T, IthacaType>(
+public(package) fun add_funds<T, IthacaType>(
     _: &MakerOrderCap,
     vault: &mut MakerVault<T, IthacaType>,
     payment: Coin<T>,
@@ -562,13 +562,6 @@ public fun get_min_stake_amount<T, IthacaType>(
 
 /// Get total asset available
 public fun total_asset_available<T, IthacaType>(
-    vault: &MakerVault<T, IthacaType>
-): u64 {
-    balance::value(&vault.collateral_balance)
-}
-
-/// Get vault collateral balance value
-public fun vault_collateral_balance_value<T, IthacaType>(
     vault: &MakerVault<T, IthacaType>
 ): u64 {
     balance::value(&vault.collateral_balance)
