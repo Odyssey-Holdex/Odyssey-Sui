@@ -44,7 +44,7 @@ async function main() {
     execSync(`sui keytool import ${privateKey} ed25519`)
     execSync(`sui client switch --env ${network}`)
     const publishResult = JSON.parse(
-      execSync(`sui client publish --json --sender ${signer.toSuiAddress()} --verify-deps`).toString()
+      execSync(`sui client publish --json --sender ${signer.toSuiAddress()}`).toString()
     );
   
     // 2. Extract packageId
