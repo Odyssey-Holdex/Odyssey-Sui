@@ -23,20 +23,11 @@ public enum Actor has copy, drop, store {
     TAKER
 }
 
-/// Tradable asset identifier (from TypesV3.sol)
-public enum TradableAsset has copy, drop, store {
-    BTC,
-    ETH,
-    SOL,
-    XAU,
-    MSTR
-}
-
 /// Trading note/order structure
 public struct Note has copy, drop, store {
     taker: address,           // Trader's address
     maker: address,           // Market Maker's pool address  
-    asset: TradableAsset,     // Asset being traded
+    symbol: String,           // Symbol of asset being traded
     direction: Direction,     // 'up' or 'down'
     amount: u64,              // Bet amount
     starting_price: u64,      // Price at bet placement (scaled)
@@ -50,14 +41,10 @@ public struct Note has copy, drop, store {
     start_time: u64,          // Start time for the note
 }
 
-/// Maker information structure (from MakerVaultV7)
+/// Maker information structure, per maker per asset
 public struct MakerInfo has copy, drop, store {
     staked_ithaca_tokens: u64,
-    collateral_btc: u64,
-    collateral_eth: u64,
-    collateral_sol: u64,
-    collateral_xau: u64,
-    collateral_mstr: u64,
+    collateral: u64,
 }
 
 /// Settlement information (from OrderV12) - without report field
@@ -83,7 +70,7 @@ const MAX_FEE_PERCENTAGE: u64 = 10000; // 1e5 (allows for 2 decimal places, e.g.
 public fun new_note(
     taker: address,
     maker: address,
-    asset: TradableAsset,
+    symbol: String,
     direction: Direction,
     amount: u64,
     starting_price: u64,
@@ -99,7 +86,7 @@ public fun new_note(
     Note {
         taker,
         maker,
-        asset,
+        symbol,
         direction,
         amount,
         starting_price,
@@ -120,11 +107,7 @@ public fun new_maker_info(
 ): MakerInfo {
     MakerInfo {
         staked_ithaca_tokens,
-        collateral_btc: 0,
-        collateral_eth: 0,
-        collateral_sol: 0,
-        collateral_xau: 0,
-        collateral_mstr: 0,
+        collateral: 0,
     }
 }
 
@@ -164,17 +147,11 @@ public fun note_status_almost_win(): NoteStatus { NoteStatus::ALMOST_WIN }
 public fun actor_maker(): Actor { Actor::MAKER }
 public fun actor_taker(): Actor { Actor::TAKER }
 
-public fun tradable_asset_btc(): TradableAsset { TradableAsset::BTC }
-public fun tradable_asset_eth(): TradableAsset { TradableAsset::ETH }
-public fun tradable_asset_sol(): TradableAsset { TradableAsset::SOL }
-public fun tradable_asset_xau(): TradableAsset { TradableAsset::XAU }
-public fun tradable_asset_mstr(): TradableAsset { TradableAsset::MSTR }
-
 // === Getter functions for Note ===
 
 public fun note_taker(note: &Note): address { note.taker }
 public fun note_maker(note: &Note): address { note.maker }
-public fun note_asset(note: &Note): &TradableAsset { &note.asset }
+public fun note_symbol(note: &Note): String { note.symbol }
 public fun note_direction(note: &Note): Direction { note.direction }
 public fun note_amount(note: &Note): u64 { note.amount }
 public fun note_starting_price(note: &Note): u64 { note.starting_price }
@@ -191,46 +168,20 @@ public fun note_start_time(note: &Note): u64 { note.start_time }
 
 public fun maker_info_staked_tokens(info: &MakerInfo): u64 { info.staked_ithaca_tokens }
 
-public fun maker_info_collateral(info: &MakerInfo, asset: &TradableAsset): u64 {
-    match (asset) {
-        TradableAsset::BTC => info.collateral_btc,
-        TradableAsset::ETH => info.collateral_eth,
-        TradableAsset::SOL => info.collateral_sol,
-        TradableAsset::XAU => info.collateral_xau,
-        TradableAsset::MSTR => info.collateral_mstr,
-    }
-}
+public fun maker_info_collateral(info: &MakerInfo): u64 { info.collateral }
 
 // === Setter functions for MakerInfo ===
 
-public fun set_maker_collateral(info: &mut MakerInfo, asset: &TradableAsset, amount: u64) {
-    match (asset) {
-        TradableAsset::BTC => info.collateral_btc = amount,
-        TradableAsset::ETH => info.collateral_eth = amount,
-        TradableAsset::SOL => info.collateral_sol = amount,
-        TradableAsset::XAU => info.collateral_xau = amount,
-        TradableAsset::MSTR => info.collateral_mstr = amount,
-    }
+public fun set_maker_collateral(info: &mut MakerInfo, amount: u64) {
+    info.collateral = amount;
 }
 
-public fun add_maker_collateral(info: &mut MakerInfo, asset: &TradableAsset, amount: u64) {
-    match (asset) {
-        TradableAsset::BTC => info.collateral_btc = info.collateral_btc + amount,
-        TradableAsset::ETH => info.collateral_eth = info.collateral_eth + amount,
-        TradableAsset::SOL => info.collateral_sol = info.collateral_sol + amount,
-        TradableAsset::XAU => info.collateral_xau = info.collateral_xau + amount,
-        TradableAsset::MSTR => info.collateral_mstr = info.collateral_mstr + amount,
-    }
+public fun add_maker_collateral(info: &mut MakerInfo, amount: u64) {
+    info.collateral = info.collateral + amount;
 }
 
-public fun subtract_maker_collateral(info: &mut MakerInfo, asset: &TradableAsset, amount: u64) {
-    match (asset) {
-        TradableAsset::BTC => info.collateral_btc = info.collateral_btc - amount,
-        TradableAsset::ETH => info.collateral_eth = info.collateral_eth - amount,
-        TradableAsset::SOL => info.collateral_sol = info.collateral_sol - amount,
-        TradableAsset::XAU => info.collateral_xau = info.collateral_xau - amount,
-        TradableAsset::MSTR => info.collateral_mstr = info.collateral_mstr - amount,
-    }
+public fun subtract_maker_collateral(info: &mut MakerInfo, amount: u64) {
+    info.collateral = info.collateral - amount;
 }
 
 public fun add_staked_tokens(info: &mut MakerInfo, amount: u64) {
@@ -246,18 +197,6 @@ public fun fee_info_max_percentage(info: &FeeInfo): u64 { info.max_fee_percentag
 // === Constants access ===
 
 public fun max_fee_percentage(): u64 { MAX_FEE_PERCENTAGE }
-
-// === Utility functions ===
-
-public fun tradable_asset_to_string(asset: &TradableAsset): String {
-    match (asset) {
-        TradableAsset::BTC => std::string::utf8(b"BTC"),
-        TradableAsset::ETH => std::string::utf8(b"ETH"),
-        TradableAsset::SOL => std::string::utf8(b"SOL"),
-        TradableAsset::XAU => std::string::utf8(b"XAU"),
-        TradableAsset::MSTR => std::string::utf8(b"MSTR"),
-    }
-}
 
 // === Comparison functions ===
 
