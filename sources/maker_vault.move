@@ -208,7 +208,6 @@ public fun unregister_maker<T, IthacaType>(
     assert!(types::maker_info_collateral(&maker_info, &types::tradable_asset_sol()) == 0, ECollateralMustBeZero);
     assert!(types::maker_info_collateral(&maker_info, &types::tradable_asset_xau()) == 0, ECollateralMustBeZero);
     assert!(types::maker_info_collateral(&maker_info, &types::tradable_asset_mstr()) == 0, ECollateralMustBeZero);
-    assert!(types::maker_info_collateral(&maker_info, &types::tradable_asset_sui()) == 0, ECollateralMustBeZero);
 
     let staked_amount = types::maker_info_staked_tokens(&maker_info);
     
@@ -460,7 +459,6 @@ public fun can_deposit_collateral<T, IthacaType>(
             let sol_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_sol());
             let xau_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_xau());
             let mstr_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_mstr());
-            let sui_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_sui());
 
             if (btc_collateral > 0) {
                 let btc_stake = get_min_stake_amount(vault, &types::tradable_asset_btc());
@@ -481,10 +479,6 @@ public fun can_deposit_collateral<T, IthacaType>(
             if (mstr_collateral > 0) {
                 let mstr_stake = get_min_stake_amount(vault, &types::tradable_asset_mstr());
                 remaining_staked = remaining_staked - mstr_stake;
-            };
-            if (sui_collateral > 0) {
-                let sui_stake = get_min_stake_amount(vault, &types::tradable_asset_sui());
-                remaining_staked = remaining_staked - sui_stake;
             };
 
             // Check if remaining staked tokens are enough for the new deposit
