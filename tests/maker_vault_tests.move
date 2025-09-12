@@ -305,10 +305,6 @@ public fun test_custom_minimum_stake_enforced_for_btc_deposit() {
 
     let default_min = get_minimum_stake();
 
-    // Register maker with stake moderately above default
-    let maker_stake = default_min + 5;
-    register_test_maker(&mut scenario, &mut maker_vault, maker1, get_btc_symbol(), maker_stake);
-
     // Set custom min for BTC higher than maker's stake
     test_scenario::next_tx(&mut scenario, governor);
     let admin_cap = scenario.take_from_sender<MakerVaultAdminCap>();
@@ -317,10 +313,9 @@ public fun test_custom_minimum_stake_enforced_for_btc_deposit() {
     maker_vault::set_custom_min_stake_amount(&admin_cap, &mut maker_vault, btc, custom_btc_min);
     scenario.return_to_sender(admin_cap);
 
-    // Attempt to deposit BTC collateral should fail due to insufficient stake vs custom min
-    test_scenario::next_tx(&mut scenario, maker1);
-    let usdc_btc = mint_usdc(&mut scenario, maker1, 1_000);
-    maker_vault::deposit_collateral(&mut maker_vault, btc, usdc_btc, ctx(&mut scenario));
+    // Attempt to register for BTC collateral should fail due to insufficient stake vs custom min
+    let maker_stake = default_min + 5;
+    register_test_maker(&mut scenario, &mut maker_vault, maker1, get_btc_symbol(), maker_stake);
 
     test_scenario::return_shared(maker_vault);
     cleanup_scenario(scenario)
@@ -335,10 +330,6 @@ public fun test_custom_minimum_stake_other_asset_allows_deposit() {
 
     let default_min = get_minimum_stake();
 
-    // Register maker with stake moderately above default
-    let maker_stake = default_min + 5;
-    register_test_maker(&mut scenario, &mut maker_vault, maker1, get_btc_symbol(), maker_stake);
-
     // Set custom min for BTC higher than maker's stake
     test_scenario::next_tx(&mut scenario, governor);
     let admin_cap = scenario.take_from_sender<MakerVaultAdminCap>();
@@ -347,6 +338,10 @@ public fun test_custom_minimum_stake_other_asset_allows_deposit() {
     let custom_btc_min = default_min + 10;
     maker_vault::set_custom_min_stake_amount(&admin_cap, &mut maker_vault, btc, custom_btc_min);
     scenario.return_to_sender(admin_cap);
+
+    // Register maker with stake moderately above default
+    let maker_stake = default_min + 5;
+    register_test_maker(&mut scenario, &mut maker_vault, maker1, eth, maker_stake);
 
     // Deposit ETH collateral should still succeed
     test_scenario::next_tx(&mut scenario, maker1);

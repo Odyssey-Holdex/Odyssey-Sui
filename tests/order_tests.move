@@ -27,6 +27,7 @@ use odyssey_sui::types;
 use odyssey_sui::order::{Self, CoordinatorCap};
 use odyssey_sui::maker_vault;
 use odyssey_sui::vault;
+use odyssey_sui::test_utils::get_btc_symbol;
 
 // ==========
 // Initialization Tests
@@ -66,13 +67,13 @@ public fun test_create_note_success_and_event_and_locks() {
     let stake_amount = get_minimum_stake();
     test_scenario::next_tx(&mut scenario, maker1);
     let ithaca = mint_ithaca(&mut scenario, maker1, stake_amount);
-    maker_vault::register_maker(&mut maker_vault, ithaca, ctx(&mut scenario));
+    maker_vault::register_maker_symbol(&mut maker_vault, get_btc_symbol(), ithaca, ctx(&mut scenario));
 
     // Ensure maker collateral sufficient and taker funds available
     test_scenario::next_tx(&mut scenario, maker1);
     let maker_collateral = 50_000_000_000_000; // 50,000 USDC with 9 decimal precision
     let usdc_for_maker = mint_usdc(&mut scenario, maker1, maker_collateral);
-    maker_vault::deposit_collateral(&mut maker_vault, types::tradable_asset_btc(), usdc_for_maker, ctx(&mut scenario));
+    maker_vault::deposit_collateral(&mut maker_vault, get_btc_symbol(), usdc_for_maker, ctx(&mut scenario));
 
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount1);
 
@@ -86,7 +87,7 @@ public fun test_create_note_success_and_event_and_locks() {
     scenario.return_to_sender(coordinator_cap);
 
     // Assert event
-    order::assert_note_created_event(note_id, trader1, maker1, types::tradable_asset_btc(), amount1, types::note_expiry_time(&note));
+    order::assert_note_created_event(note_id, trader1, maker1, get_btc_symbol(), amount1, types::note_expiry_time(&note));
 
     // Locks
     test_scenario::next_tx(&mut scenario, trader1);
@@ -94,7 +95,7 @@ public fun test_create_note_success_and_event_and_locks() {
     assert_eq(taker_locked, amount1);
 
     test_scenario::next_tx(&mut scenario, maker1);
-    let maker_locked = order::maker_locked_balance(&order_manager, maker1, types::tradable_asset_btc());
+    let maker_locked = order::maker_locked_balance(&order_manager, maker1, get_btc_symbol());
     assert_eq(maker_locked, win_payout1 - amount1);
 
     // Create another note and validate cumulative locks
@@ -113,7 +114,7 @@ public fun test_create_note_success_and_event_and_locks() {
     assert_eq(taker_locked_after, amount1 + amount2);
 
     test_scenario::next_tx(&mut scenario, maker1);
-    let maker_locked_after = order::maker_locked_balance(&order_manager, maker1, types::tradable_asset_btc());
+    let maker_locked_after = order::maker_locked_balance(&order_manager, maker1, get_btc_symbol());
     assert_eq(maker_locked_after, (win_payout1 - amount1) + (win_payout2 - amount2));
 
     // destroy clock
@@ -129,14 +130,14 @@ public fun test_create_note_success_and_event_and_locks() {
 #[expected_failure(abort_code = order::EInvalidNote)]
 public fun test_cannot_create_note_with_zero_amount() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Ensure trader funded
     deposit_trader_funds(&mut scenario, &mut vault, trader1, 1);
 
     // amount = 0
-    let note = types::new_note(trader1, maker1, types::tradable_asset_btc(), types::direction_up(), 0, 84000, 15, 100, timestamp_plus_days(&clock, 2), 0, 0, 10, 1, 1);
+    let note = types::new_note(trader1, maker1, symbol, types::direction_up(), 0, 84000, 15, 100, timestamp_plus_days(&clock, 2), 0, 0, 10, 1, 1);
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let coordinator_cap = scenario.take_from_sender<CoordinatorCap>();
@@ -154,14 +155,14 @@ public fun test_cannot_create_note_with_zero_amount() {
 #[expected_failure(abort_code = order::EInvalidNote)]
 public fun test_cannot_create_note_with_zero_taker_or_maker() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Fund trader
     deposit_trader_funds(&mut scenario, &mut vault, trader1, 100);
 
     // taker is zero address
-    let note1 = types::new_note(@0x0, maker1, types::tradable_asset_btc(), types::direction_up(), 10, 84000, 15, 30, timestamp_plus_days(&clock, 2), 0, 10, 10, 20, 1);
+    let note1 = types::new_note(@0x0, maker1, symbol, types::direction_up(), 10, 84000, 15, 30, timestamp_plus_days(&clock, 2), 0, 10, 10, 20, 1);
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let coordinator_cap = scenario.take_from_sender<CoordinatorCap>();
@@ -179,13 +180,13 @@ public fun test_cannot_create_note_with_zero_taker_or_maker() {
 #[expected_failure(abort_code = order::EInvalidPayout)]
 public fun test_cannot_create_note_with_invalid_payouts() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     deposit_trader_funds(&mut scenario, &mut vault, trader1, 1000);
 
     // win_payout <= amount
-    let note = types::new_note(trader1, maker1, types::tradable_asset_btc(), types::direction_up(), 100, 84000, 15, 100, timestamp_plus_days(&clock, 2), 0, 100, 10, 0, 1);
+    let note = types::new_note(trader1, maker1, symbol, types::direction_up(), 100, 84000, 15, 100, timestamp_plus_days(&clock, 2), 0, 100, 10, 0, 1);
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let coordinator_cap = scenario.take_from_sender<CoordinatorCap>();
@@ -203,12 +204,12 @@ public fun test_cannot_create_note_with_invalid_payouts() {
 #[expected_failure(abort_code = order::EInvalidPayout)]
 public fun test_cannot_create_note_with_refund_payout_bigger_than_amount() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     deposit_trader_funds(&mut scenario, &mut vault, trader1, 1000);
 
-    let note = types::new_note(trader1, maker1, types::tradable_asset_btc(), types::direction_up(), 100, 84000, 15, 200, timestamp_plus_days(&clock, 2), 0, 101, 10, 100, 1);
+    let note = types::new_note(trader1, maker1, symbol, types::direction_up(), 100, 84000, 15, 200, timestamp_plus_days(&clock, 2), 0, 101, 10, 100, 1);
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let coordinator_cap = scenario.take_from_sender<CoordinatorCap>();
@@ -226,13 +227,13 @@ public fun test_cannot_create_note_with_refund_payout_bigger_than_amount() {
 #[expected_failure(abort_code = order::EInvalidPayout)]
 public fun test_cannot_create_note_with_almost_win_payout_zero() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     deposit_trader_funds(&mut scenario, &mut vault, trader1, 1000);
 
     // almost win payout = 0
-    let note = types::new_note(trader1, maker1, types::tradable_asset_btc(), types::direction_up(), 100, 84000, 15, 200, timestamp_plus_days(&clock, 2), 0, 100, 10, 0, 1);
+    let note = types::new_note(trader1, maker1, symbol, types::direction_up(), 100, 84000, 15, 200, timestamp_plus_days(&clock, 2), 0, 100, 10, 0, 1);
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let coordinator_cap = scenario.take_from_sender<CoordinatorCap>();
@@ -250,13 +251,13 @@ public fun test_cannot_create_note_with_almost_win_payout_zero() {
 #[expected_failure(abort_code = order::EInvalidPayout)]
 public fun test_cannot_create_note_with_almost_win_payout_zero_more_than_win() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     deposit_trader_funds(&mut scenario, &mut vault, trader1, 1000);
 
     // almost win payout = 201, win payout = 200
-    let note = types::new_note(trader1, maker1, types::tradable_asset_btc(), types::direction_up(), 100, 84000, 15, 200, timestamp_plus_days(&clock, 2), 0, 100, 10, 201, 1);
+    let note = types::new_note(trader1, maker1, symbol, types::direction_up(), 100, 84000, 15, 200, timestamp_plus_days(&clock, 2), 0, 100, 10, 201, 1);
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let coordinator_cap = scenario.take_from_sender<CoordinatorCap>();
@@ -274,12 +275,12 @@ public fun test_cannot_create_note_with_almost_win_payout_zero_more_than_win() {
 #[expected_failure(abort_code = order::EInvalidSpread)]
 public fun test_cannot_create_note_with_almost_win_spread_more_than_spread() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     deposit_trader_funds(&mut scenario, &mut vault, trader1, 1000);
 
-    let note = types::new_note(trader1, maker1, types::tradable_asset_btc(), types::direction_up(), 100, 84000, 15, 200, timestamp_plus_days(&clock, 2), 0, 100, 16, 100, 1);
+    let note = types::new_note(trader1, maker1, symbol, types::direction_up(), 100, 84000, 15, 200, timestamp_plus_days(&clock, 2), 0, 100, 16, 100, 1);
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let coordinator_cap = scenario.take_from_sender<CoordinatorCap>();
@@ -297,13 +298,13 @@ public fun test_cannot_create_note_with_almost_win_spread_more_than_spread() {
 #[expected_failure(abort_code = order::EInsufficientTakerBalance)]
 public fun test_cannot_create_note_if_taker_balance_less_than_amount() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Fund trader less than amount
     deposit_trader_funds(&mut scenario, &mut vault, trader1, 99);
 
-    let note = create_custom_note(trader1, maker1, types::tradable_asset_btc(), types::direction_up(), 100, 84000, 15, 300, timestamp_plus_days(&clock, 2), 100, 10, 100);
+    let note = create_custom_note(trader1, maker1, symbol, types::direction_up(), 100, 84000, 15, 300, timestamp_plus_days(&clock, 2), 100, 10, 100);
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let coordinator_cap = scenario.take_from_sender<CoordinatorCap>();
@@ -330,7 +331,7 @@ public fun test_cannot_create_note_if_maker_balance_less_than_win_amount() {
 
     // Note requires maker win collateral of 800 (900 - 100) but maker has 0 -> should fail
     let clock = create_test_clock(&mut scenario, 1);
-    let note = create_custom_note(trader1, maker1, types::tradable_asset_btc(), types::direction_up(), 100, 84000, 15, 900, timestamp_plus_days(&clock, 2), 100, 10, 100);
+    let note = create_custom_note(trader1, maker1, get_btc_symbol(), types::direction_up(), 100, 84000, 15, 900, timestamp_plus_days(&clock, 2), 100, 10, 100);
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let coordinator_cap = scenario.take_from_sender<CoordinatorCap>();
@@ -349,14 +350,14 @@ public fun test_cannot_create_note_if_maker_balance_less_than_win_amount() {
 #[expected_failure(abort_code = order::EInvalidExpiryTime)]
 public fun test_cannot_create_note_if_expiry_not_in_future() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Fund trader sufficiently
     deposit_trader_funds(&mut scenario, &mut vault, trader1, 100);
 
     // expiry <= now
-    let note = create_custom_note(trader1, maker1, types::tradable_asset_btc(), types::direction_up(), 100, 84000, 15, 300, /* expiry */ timestamp_plus_days(&clock, 0), 100, 10, 100);
+    let note = create_custom_note(trader1, maker1, symbol, types::direction_up(), 100, 84000, 15, 300, /* expiry */ timestamp_plus_days(&clock, 0), 100, 10, 100);
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let coordinator_cap = scenario.take_from_sender<CoordinatorCap>();
@@ -374,7 +375,7 @@ public fun test_cannot_create_note_if_expiry_not_in_future() {
 #[expected_failure(abort_code = order::EInvalidExpiryTime)]
 public fun test_cannot_create_note_if_start_more_than_expiry() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     deposit_trader_funds(&mut scenario, &mut vault, trader1, 100);
@@ -382,7 +383,7 @@ public fun test_cannot_create_note_if_start_more_than_expiry() {
     // Manually craft note with start_time > expiry_time
     let expiry = test_utils::timestamp_plus_days(&clock, 1);
     let start_time = expiry + 1;
-    let note = types::new_note(trader1, maker1, types::tradable_asset_btc(), types::direction_up(), 100, 84000, 15, 300, expiry, 0, 100, 10, 150, start_time);
+    let note = types::new_note(trader1, maker1, symbol, types::direction_up(), 100, 84000, 15, 300, expiry, 0, 100, 10, 150, start_time);
 
     test_scenario::next_tx(&mut scenario, coordinator);
     let coordinator_cap = scenario.take_from_sender<CoordinatorCap>();
@@ -403,7 +404,7 @@ public fun test_cannot_create_note_if_start_more_than_expiry() {
 #[test]
 public fun test_settle_win_up_direction() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, mut clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, mut clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set taker fee percentage to 5%
@@ -416,7 +417,7 @@ public fun test_settle_win_up_direction() {
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
 
     let prev_taker_balance = vault::taker_balance(&vault, trader1);
-    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, symbol);
     let note = create_test_note(trader1, maker1, amount, win_payout, 2);
 
     test_scenario::next_tx(&mut scenario, coordinator);
@@ -450,7 +451,7 @@ public fun test_settle_win_up_direction() {
 
     // Verify maker balance
     test_scenario::next_tx(&mut scenario, maker1);
-    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, symbol);
     assert_eq(final_maker_balance, prev_maker_balance - winning_amount); // Maker loses the full winning amount
 
     // Verify vault total asset availability
@@ -465,7 +466,7 @@ public fun test_settle_win_up_direction() {
     test_scenario::next_tx(&mut scenario, trader1);
     assert_eq(order::taker_locked_balance(&order_manager, trader1), 0);
     test_scenario::next_tx(&mut scenario, maker1);
-    assert_eq(order::maker_locked_balance(&order_manager, maker1, types::tradable_asset_btc()), 0);
+    assert_eq(order::maker_locked_balance(&order_manager, maker1, symbol), 0);
 
     test_scenario::return_shared(vault);
     test_scenario::return_shared(maker_vault);
@@ -477,7 +478,7 @@ public fun test_settle_win_up_direction() {
 #[test]
 public fun test_settle_loss_up_direction() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, mut clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, mut clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set maker fee percentage to 10%
@@ -489,7 +490,7 @@ public fun test_settle_loss_up_direction() {
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
     
     let prev_taker_balance = vault::taker_balance(&vault, trader1);
-    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, symbol);
     let note = create_test_note(trader1, maker1, amount, win_payout, 2);
 
     test_scenario::next_tx(&mut scenario, coordinator);
@@ -522,7 +523,7 @@ public fun test_settle_loss_up_direction() {
 
     // Verify maker balance
     test_scenario::next_tx(&mut scenario, maker1);
-    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, symbol);
     assert_eq(final_maker_balance, prev_maker_balance + amount_after_fee); // Maker gets amount after fee
 
     // Verify vault total asset availability
@@ -543,7 +544,7 @@ public fun test_settle_loss_up_direction() {
 #[test]
 public fun test_settle_refund_up_direction() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, mut clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, mut clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set both fee percentages to make sure no fees are applied on refund
@@ -555,7 +556,7 @@ public fun test_settle_refund_up_direction() {
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
     
     let prev_taker_balance = vault::taker_balance(&vault, trader1);
-    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, symbol);
     let note = create_test_note(trader1, maker1, amount, win_payout, 2);
 
     test_scenario::next_tx(&mut scenario, coordinator);
@@ -583,7 +584,7 @@ public fun test_settle_refund_up_direction() {
 
     // Verify maker balance
     test_scenario::next_tx(&mut scenario, maker1);
-    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, symbol);
     assert_eq(final_maker_balance, prev_maker_balance); // Maker gets nothing (no fees)
 
     // Verify vault total asset availability
@@ -605,7 +606,7 @@ public fun test_settle_refund_up_direction() {
 #[test]
 public fun test_settle_refund_less_than_amount_up_direction() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, mut clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, mut clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Fees should not apply on refund
@@ -616,14 +617,14 @@ public fun test_settle_refund_less_than_amount_up_direction() {
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
 
     let prev_taker_balance = vault::taker_balance(&vault, trader1);
-    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, symbol);
 
     let refund_payout = amount - 123_456_000_000; // maker gains 123.456 USDC
 
     let note = create_custom_note(
         trader1,
         maker1,
-        types::tradable_asset_btc(),
+        symbol,
         types::direction_up(),
         amount,
         84000000000000, // 84k USD with 9 decimal precision
@@ -659,7 +660,7 @@ public fun test_settle_refund_less_than_amount_up_direction() {
     assert_eq(final_taker_balance, prev_taker_balance - transferred);
 
     test_scenario::next_tx(&mut scenario, maker1);
-    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, symbol);
     assert_eq(final_maker_balance, prev_maker_balance + transferred);
 
     let final_vault_asset = vault::total_asset_available(&vault);
@@ -678,7 +679,7 @@ public fun test_settle_refund_less_than_amount_up_direction() {
 #[test]
 public fun test_settle_almost_win_up_direction() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, mut clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, mut clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set both fee percentages to test almost win scenario
@@ -690,7 +691,7 @@ public fun test_settle_almost_win_up_direction() {
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
     
     let prev_taker_balance = vault::taker_balance(&vault, trader1);
-    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, symbol);
     let note = create_test_note(trader1, maker1, amount, win_payout, 2);
 
     test_scenario::next_tx(&mut scenario, coordinator);
@@ -726,7 +727,7 @@ public fun test_settle_almost_win_up_direction() {
 
     // Verify maker balance
     test_scenario::next_tx(&mut scenario, maker1);
-    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, symbol);
     assert_eq(final_maker_balance, prev_maker_balance - transfer_amount); // Maker loses the transfer amount
 
     // Verify vault total asset availability
@@ -747,7 +748,7 @@ public fun test_settle_almost_win_up_direction() {
 #[test]
 public fun test_settle_almost_win_equal_amount_up_direction() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, mut clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, mut clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set fees (should not apply when no transfer)
@@ -759,12 +760,12 @@ public fun test_settle_almost_win_equal_amount_up_direction() {
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
 
     let prev_taker_balance = vault::taker_balance(&vault, trader1);
-    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, symbol);
 
     let note = create_custom_note(
         trader1,
         maker1,
-        types::tradable_asset_btc(),
+        symbol,
         types::direction_up(),
         amount,
         84000,
@@ -800,7 +801,7 @@ public fun test_settle_almost_win_equal_amount_up_direction() {
     assert_eq(final_taker_balance, prev_taker_balance);
 
     test_scenario::next_tx(&mut scenario, maker1);
-    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, symbol);
     assert_eq(final_maker_balance, prev_maker_balance);
 
     let final_vault_asset = vault::total_asset_available(&vault);
@@ -819,7 +820,7 @@ public fun test_settle_almost_win_equal_amount_up_direction() {
 #[test]
 public fun test_settle_almost_win_less_than_amount_up_direction() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, mut clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, mut clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Maker fee will apply when maker gains
@@ -831,14 +832,14 @@ public fun test_settle_almost_win_less_than_amount_up_direction() {
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
 
     let prev_taker_balance = vault::taker_balance(&vault, trader1);
-    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, symbol);
 
     let almost_win_payout = amount - 100_000; // maker gains 100_000
 
     let note = create_custom_note(
         trader1,
         maker1,
-        types::tradable_asset_btc(),
+        symbol,
         types::direction_up(),
         amount,
         84000,
@@ -877,7 +878,7 @@ public fun test_settle_almost_win_less_than_amount_up_direction() {
     assert_eq(final_taker_balance, prev_taker_balance - transferred);
 
     test_scenario::next_tx(&mut scenario, maker1);
-    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, symbol);
     assert_eq(final_maker_balance, prev_maker_balance + amount_after_fee);
 
     let final_vault_asset = vault::total_asset_available(&vault);
@@ -897,7 +898,7 @@ public fun test_settle_almost_win_less_than_amount_up_direction() {
 #[test]
 public fun test_settle_variants_down_direction() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, mut clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, mut clock, _, symbol) = setup_funded_scenario(&mut scenario, none());
     let (_governor, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     // Set taker fee percentage for win scenario
@@ -909,11 +910,11 @@ public fun test_settle_variants_down_direction() {
     deposit_trader_funds(&mut scenario, &mut vault, trader1, amount);
 
     let prev_taker_balance = vault::taker_balance(&vault, trader1);
-    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let prev_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, symbol);
     let note = create_custom_note(
         trader1,
         maker1,
-        types::tradable_asset_btc(),
+        symbol,
         types::direction_down(),
         amount,
         84000,
@@ -956,7 +957,7 @@ public fun test_settle_variants_down_direction() {
 
     // Verify maker balance
     test_scenario::next_tx(&mut scenario, maker1);
-    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, &types::tradable_asset_btc());
+    let final_maker_balance = maker_vault::get_maker_collateral(&maker_vault, maker1, symbol);
     assert_eq(final_maker_balance, prev_maker_balance - winning_amount); // Maker loses the full winning amount
 
     // Verify vault total asset availability
@@ -978,7 +979,7 @@ public fun test_settle_variants_down_direction() {
 #[expected_failure(abort_code = order::ENoteNotFound)]
 public fun test_cannot_settle_nonexistent_note() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, clock, _, _) = setup_funded_scenario(&mut scenario, none());
     let (_, _, _, _, _, _, coordinator) = get_test_addresses();
 
     test_scenario::next_tx(&mut scenario, coordinator);
@@ -997,7 +998,7 @@ public fun test_cannot_settle_nonexistent_note() {
 #[expected_failure(abort_code = order::ENoteAlreadySettled)]
 public fun test_cannot_settle_same_note_twice() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, mut clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, mut clock, _, _) = setup_funded_scenario(&mut scenario, none());
     let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     let amount = 500;
@@ -1034,7 +1035,7 @@ public fun test_cannot_settle_same_note_twice() {
 #[expected_failure(abort_code = order::ENoteNotExpired)]
 public fun test_cannot_settle_before_expiry() {
     let mut scenario = setup_test_scenario();
-    let (mut vault, mut maker_vault, mut order_manager, clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, clock, _, _) = setup_funded_scenario(&mut scenario, none());
     let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
 
     let amount = 500;
