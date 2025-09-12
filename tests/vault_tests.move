@@ -199,7 +199,7 @@ public fun test_can_withdraw_remaining_nonlocked_balance() {
 public fun test_cannot_withdraw_locked_balance() {
     let mut scenario = setup_test_scenario();
     let (_, trader1, _, maker1, _, _, coordinator) = get_test_addresses();
-    let (mut vault, mut maker_vault, mut order_manager, clock, _) = setup_funded_scenario(&mut scenario, none());
+    let (mut vault, mut maker_vault, mut order_manager, clock, _, _) = setup_funded_scenario(&mut scenario, none());
 
     // Create an order to lock some balance
     test_scenario::next_tx(&mut scenario, trader1);

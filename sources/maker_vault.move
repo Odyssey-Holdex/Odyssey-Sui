@@ -5,7 +5,8 @@ use sui::coin::{Self, Coin};
 use sui::balance::{Self, Balance};
 use sui::table::{Self, Table};
 use sui::event;
-use odyssey_sui::types::{Self, TradableAsset, MakerInfo};
+use odyssey_sui::types::{Self, MakerInfo};
+use std::string::String;
 
 // === Constants ===
 
@@ -60,17 +61,24 @@ public struct MakerVault<phantom T, phantom IthacaType> has key {
     version: u64,
     /// Admin capability ID that controls this vault
     admin: ID,
-    /// Mapping of maker address to their info
-    makers: Table<address, MakerInfo>,
+    /// Mapping of maker + symbol to their info
+    makers: Table<MakerSymbolKey, MakerInfo>,
     /// Minimum stake amount required to become a maker
     minimum_stake_amount: u64,
     /// Custom minimum stake amounts for specific assets
-    custom_min_stake_amounts: Table<TradableAsset, u64>,
+    custom_min_stake_amounts: Table<String, u64>,
     /// The actual collateral coin balance held by the vault
     collateral_balance: Balance<T>,
     /// The Ithaca token balance held by the vault for staking
     ithaca_balance: Balance<IthacaType>,
 }
+
+/// Key for maker info (maker address + symbol)
+public struct MakerSymbolKey has copy, drop, store {
+    maker: address,
+    symbol: String,
+}
+
 
 // === Events ===
 
@@ -88,20 +96,14 @@ public struct MakerUnregistered has copy, drop {
 /// Emitted when maker deposits collateral
 public struct CollateralDeposited has copy, drop {
     maker: address,
-    tradable_asset: TradableAsset,
+    symbol: String,
     amount: u64,
 }
 
 /// Emitted when maker withdraws collateral
 public struct CollateralWithdrawn has copy, drop {
     maker: address,
-    tradable_asset: TradableAsset,
-    amount: u64,
-}
-
-/// Emitted when maker stakes more Ithaca tokens
-public struct IthacaStaked has copy, drop {
-    maker: address,
+    symbol: String,
     amount: u64,
 }
 
@@ -112,7 +114,7 @@ public struct MinimumStakeAmountSet has copy, drop {
 
 /// Emitted when custom minimum stake amount is set
 public struct CustomMinStakeAmountSet has copy, drop {
-    tradable_asset: TradableAsset,
+    symbol: String,
     amount: u64,
 }
 
@@ -160,8 +162,9 @@ public fun initialize<T, IthacaType>(
 }
 
 /// Register as a maker by staking Ithaca tokens
-public fun register_maker<T, IthacaType>(
+public fun register_maker_symbol<T, IthacaType>(
     vault: &mut MakerVault<T, IthacaType>,
+    symbol: String,
     ithaca_payment: Coin<IthacaType>,
     ctx: &mut TxContext
 ) {
@@ -169,14 +172,21 @@ public fun register_maker<T, IthacaType>(
     
     let sender = tx_context::sender(ctx);
     let stake_amount = coin::value(&ithaca_payment);
+
+    let key = MakerSymbolKey {
+        maker: sender,
+        symbol,
+    };
     
     assert!(stake_amount > 0, ENotZeroAmount);
-    assert!(!table::contains(&vault.makers, sender), EMakerAlreadyRegistered);
-    assert!(stake_amount >= vault.minimum_stake_amount, EInsufficientStake);
+    assert!(!table::contains(&vault.makers, key), EMakerAlreadyRegistered);
+
+    let symbol_min_stake = get_min_stake_amount(vault, symbol);
+    assert!(stake_amount >= symbol_min_stake, EInsufficientStake);
 
     // Create maker info
     let maker_info = types::new_maker_info(stake_amount);
-    table::add(&mut vault.makers, sender, maker_info);
+    table::add(&mut vault.makers, key, maker_info);
 
     // Add Ithaca tokens to vault balance
     let ithaca_balance = coin::into_balance(ithaca_payment);
@@ -192,22 +202,22 @@ public fun register_maker<T, IthacaType>(
 /// Unregister as a maker and withdraw all staked Ithaca tokens
 public fun unregister_maker<T, IthacaType>(
     vault: &mut MakerVault<T, IthacaType>,
+    symbol: String,
     ctx: &mut TxContext
 ): Coin<IthacaType> {
     assert!(vault.version == VERSION, EWrongVersion);
     
     let sender = tx_context::sender(ctx);
+    let key = MakerSymbolKey {
+        maker: sender,
+        symbol,
+    };
+    assert!(table::contains(&vault.makers, key), EMakerNotAvailable);
     
-    assert!(table::contains(&vault.makers, sender), EMakerNotAvailable);
+    let maker_info = table::remove(&mut vault.makers, key);
     
-    let maker_info = table::remove(&mut vault.makers, sender);
-    
-    // Check that all collateral is zero
-    assert!(types::maker_info_collateral(&maker_info, &types::tradable_asset_btc()) == 0, ECollateralMustBeZero);
-    assert!(types::maker_info_collateral(&maker_info, &types::tradable_asset_eth()) == 0, ECollateralMustBeZero);
-    assert!(types::maker_info_collateral(&maker_info, &types::tradable_asset_sol()) == 0, ECollateralMustBeZero);
-    assert!(types::maker_info_collateral(&maker_info, &types::tradable_asset_xau()) == 0, ECollateralMustBeZero);
-    assert!(types::maker_info_collateral(&maker_info, &types::tradable_asset_mstr()) == 0, ECollateralMustBeZero);
+    // Check that the collateral is zero
+    assert!(types::maker_info_collateral(&maker_info) == 0, ECollateralMustBeZero);
 
     let staked_amount = types::maker_info_staked_tokens(&maker_info);
     
@@ -226,7 +236,7 @@ public fun unregister_maker<T, IthacaType>(
 /// Deposit collateral for a specific tradable asset
 public fun deposit_collateral<T, IthacaType>(
     vault: &mut MakerVault<T, IthacaType>,
-    tradable_asset: TradableAsset,
+    symbol: String,
     payment: Coin<T>,
     ctx: &mut TxContext
 ) {
@@ -234,16 +244,17 @@ public fun deposit_collateral<T, IthacaType>(
     
     let sender = tx_context::sender(ctx);
     let amount = coin::value(&payment);
-    
-    assert!(amount > 0, ENotZeroAmount);
-    assert!(table::contains(&vault.makers, sender), EMakerNotAvailable);
+    let key = MakerSymbolKey {
+        maker: sender,
+        symbol,
+    };
 
-    let can_stake = can_deposit_collateral(vault, sender, &tradable_asset);
-    assert!(can_stake, EInsufficientStake);
+    assert!(amount > 0, ENotZeroAmount);
+    assert!(table::contains(&vault.makers, key), EMakerNotAvailable);
 
     // Update collateral
-    let maker_info = table::borrow_mut(&mut vault.makers, sender);
-    types::add_maker_collateral(maker_info, &tradable_asset, amount);
+    let maker_info = table::borrow_mut(&mut vault.makers, key);
+    types::add_maker_collateral(maker_info, amount);
 
     // Add payment to vault balance
     let payment_balance = coin::into_balance(payment);
@@ -252,7 +263,7 @@ public fun deposit_collateral<T, IthacaType>(
     // Emit event
     event::emit(CollateralDeposited {
         maker: sender,
-        tradable_asset,
+        symbol,
         amount,
     });
 }
@@ -263,22 +274,27 @@ public fun withdraw_collateral<T, IthacaType>(
     order_cap: &MakerOrderCap,
     vault: &mut MakerVault<T, IthacaType>,
     maker: address,
-    tradable_asset: TradableAsset,
+    symbol: String,
     locked_amount: u64,
     amount: u64,
     ctx: &mut TxContext
 ): Coin<T> {
     assert!(vault.version == VERSION, EWrongVersion);
     assert!(amount > 0, ENotZeroAmount);
-    assert!(table::contains(&vault.makers, maker), EMakerNotAvailable);
 
-    let withdrawable_balance = get_withdrawable_balance_with_locked(order_cap, vault, maker, &tradable_asset, locked_amount);
+    let key = MakerSymbolKey {
+        maker,
+        symbol,
+    };
+    assert!(table::contains(&vault.makers, key), EMakerNotAvailable);
+
+    let withdrawable_balance = get_withdrawable_balance_with_locked(order_cap, vault, maker, symbol, locked_amount);
     assert!(amount <= withdrawable_balance, EInsufficientCollateral);
 
-    let maker_info = table::borrow_mut(&mut vault.makers, maker);
+    let maker_info = table::borrow_mut(&mut vault.makers, key);
     
     // Update collateral
-    types::subtract_maker_collateral(maker_info, &tradable_asset, amount);
+    types::subtract_maker_collateral(maker_info, amount);
 
     // Extract coin from vault balance
     let withdrawn_balance = balance::split(&mut vault.collateral_balance, amount);
@@ -287,39 +303,11 @@ public fun withdraw_collateral<T, IthacaType>(
     // Emit event
     event::emit(CollateralWithdrawn {
         maker,
-        tradable_asset,
+        symbol,
         amount,
     });
 
     withdrawn_coin
-}
-
-/// Stake additional Ithaca tokens
-public fun stake_ithaca<T, IthacaType>(
-    vault: &mut MakerVault<T, IthacaType>,
-    ithaca_payment: Coin<IthacaType>,
-    ctx: &mut TxContext
-) {
-    assert!(vault.version == VERSION, EWrongVersion);
-    
-    let sender = tx_context::sender(ctx);
-    let amount = coin::value(&ithaca_payment);
-    
-    assert!(amount > 0, ENotZeroAmount);
-    assert!(table::contains(&vault.makers, sender), EMakerNotAvailable);
-
-    let maker_info = table::borrow_mut(&mut vault.makers, sender);
-    types::add_staked_tokens(maker_info, amount);
-
-    // Add Ithaca tokens to vault balance
-    let ithaca_balance = coin::into_balance(ithaca_payment);
-    balance::join(&mut vault.ithaca_balance, ithaca_balance);
-
-    // Emit event
-    event::emit(IthacaStaked {
-        maker: sender,
-        amount,
-    });
 }
 
 // === Admin Functions ===
@@ -349,19 +337,19 @@ public fun set_minimum_stake_amount<T, IthacaType>(
 public fun set_custom_min_stake_amount<T, IthacaType>(
     _: &MakerVaultAdminCap,
     vault: &mut MakerVault<T, IthacaType>,
-    tradable_asset: TradableAsset,
+    symbol: String,
     amount: u64,
 ) {
     assert!(vault.version == VERSION, EWrongVersion);
     
-    if (table::contains(&vault.custom_min_stake_amounts, tradable_asset)) {
-        table::remove(&mut vault.custom_min_stake_amounts, tradable_asset);
+    if (table::contains(&vault.custom_min_stake_amounts, symbol)) {
+        table::remove(&mut vault.custom_min_stake_amounts, symbol);
     };
     
-    table::add(&mut vault.custom_min_stake_amounts, tradable_asset, amount);
+    table::add(&mut vault.custom_min_stake_amounts, symbol, amount);
 
     event::emit(CustomMinStakeAmountSet {
-        tradable_asset,
+        symbol,
         amount,
     });
 }
@@ -385,21 +373,26 @@ public(package) fun adjust_maker_balance<T, IthacaType>(
     _: &MakerOrderCap,
     vault: &mut MakerVault<T, IthacaType>,
     maker: address,
-    tradable_asset: TradableAsset,
+    symbol: String,
     amount: u64,
     is_win: bool,
 ) {
     assert!(vault.version == VERSION, EWrongVersion);
-    assert!(table::contains(&vault.makers, maker), EMakerNotAvailable);
     
-    let maker_info = table::borrow_mut(&mut vault.makers, maker);
+    let key = MakerSymbolKey {
+        maker,
+        symbol,
+    };
+    assert!(table::contains(&vault.makers, key), EMakerNotAvailable);
+    
+    let maker_info = table::borrow_mut(&mut vault.makers, key);
     
     if (is_win) {
         // Increase maker collateral
-        types::add_maker_collateral(maker_info, &tradable_asset, amount);
+        types::add_maker_collateral(maker_info, amount);
     } else {
         // Decrease maker collateral
-        types::subtract_maker_collateral(maker_info, &tradable_asset, amount);
+        types::subtract_maker_collateral(maker_info, amount);
     }
 }
 
@@ -408,16 +401,21 @@ public(package) fun transfer_fee_to_treasury<T, IthacaType>(
     _: &MakerOrderCap,
     vault: &mut MakerVault<T, IthacaType>,
     maker: address,
-    tradable_asset: TradableAsset,
+    symbol: String,
     fee: u64,
     ctx: &mut TxContext
 ): Coin<T> {
     assert!(vault.version == VERSION, EWrongVersion);
-    assert!(table::contains(&vault.makers, maker), EMakerNotAvailable);
+
+    let key = MakerSymbolKey {
+        maker,
+        symbol,
+    };
+    assert!(table::contains(&vault.makers, key), EMakerNotAvailable);
     
     // Reduce maker collateral
-    let maker_info = table::borrow_mut(&mut vault.makers, maker);
-    types::subtract_maker_collateral(maker_info, &tradable_asset, fee);
+    let maker_info = table::borrow_mut(&mut vault.makers, key);
+    types::subtract_maker_collateral(maker_info, fee);
 
     // Extract fee from vault balance
     let fee_balance = balance::split(&mut vault.collateral_balance, fee);
@@ -439,64 +437,18 @@ public(package) fun add_funds<T, IthacaType>(
 
 // === View Functions ===
 
-/// Check if maker can deposit collateral for a specific asset
-public fun can_deposit_collateral<T, IthacaType>(
+/// Get maker staked tokens for specific asset
+public fun get_maker_staked_ithaca<T, IthacaType>(
     vault: &MakerVault<T, IthacaType>,
     maker: address,
-    tradable_asset: &TradableAsset
-): bool {
-    if (table::contains(&vault.makers, maker)) {
-        let maker_info = table::borrow(&vault.makers, maker);
-        let staked_tokens = types::maker_info_staked_tokens(maker_info);
-        let mut remaining_staked = staked_tokens;
-        let current_collateral = types::maker_info_collateral(maker_info, tradable_asset);
-        if (current_collateral > 0) {
-            // If already has collateral, no need to check staked tokens
-            true
-        } else {
-            let btc_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_btc());
-            let eth_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_eth());
-            let sol_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_sol());
-            let xau_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_xau());
-            let mstr_collateral = types::maker_info_collateral(maker_info, &types::tradable_asset_mstr());
-
-            if (btc_collateral > 0) {
-                let btc_stake = get_min_stake_amount(vault, &types::tradable_asset_btc());
-                remaining_staked = remaining_staked - btc_stake;
-            };
-            if (eth_collateral > 0) {
-                let eth_stake = get_min_stake_amount(vault, &types::tradable_asset_eth());
-                remaining_staked = remaining_staked - eth_stake;
-            };
-            if (sol_collateral > 0) {
-                let sol_stake = get_min_stake_amount(vault, &types::tradable_asset_sol());
-                remaining_staked = remaining_staked - sol_stake;
-            };
-            if (xau_collateral > 0) {
-                let xau_stake = get_min_stake_amount(vault, &types::tradable_asset_xau());
-                remaining_staked = remaining_staked - xau_stake;
-            };
-            if (mstr_collateral > 0) {
-                let mstr_stake = get_min_stake_amount(vault, &types::tradable_asset_mstr());
-                remaining_staked = remaining_staked - mstr_stake;
-            };
-
-            // Check if remaining staked tokens are enough for the new deposit
-            let min_stake = get_min_stake_amount(vault, tradable_asset);
-            remaining_staked >= min_stake
-        }
-    } else {
-        false
-    }
-}
-
-/// Get maker info
-public fun get_maker_info<T, IthacaType>(
-    vault: &MakerVault<T, IthacaType>, 
-    maker: address
+    symbol: String
 ): u64 {
-    if (table::contains(&vault.makers, maker)) {
-        let maker_info = table::borrow(&vault.makers, maker);
+    let key = MakerSymbolKey {
+        maker,
+        symbol,
+    };
+    if (table::contains(&vault.makers, key)) {
+        let maker_info = table::borrow(&vault.makers, key);
         types::maker_info_staked_tokens(maker_info)
     } else {
         0
@@ -506,41 +458,31 @@ public fun get_maker_info<T, IthacaType>(
 /// Get maker collateral for specific asset
 public fun get_maker_collateral<T, IthacaType>(
     vault: &MakerVault<T, IthacaType>, 
-    maker: address, 
-    tradable_asset: &TradableAsset
+    maker: address,
+    symbol: String
 ): u64 {
-    if (table::contains(&vault.makers, maker)) {
-        let maker_info = table::borrow(&vault.makers, maker);
-        types::maker_info_collateral(maker_info, tradable_asset)
+    let key = MakerSymbolKey {
+        maker,
+        symbol,
+    };
+    if (table::contains(&vault.makers, key)) {
+        let maker_info = table::borrow(&vault.makers, key);
+        types::maker_info_collateral(maker_info)
     } else {
         0
     }
 }
-
-/// Get maker collaterals for all assets
-public fun get_maker_collaterals<T, IthacaType>(
-    vault: &MakerVault<T, IthacaType>,
-    maker: address,
-): types::MakerInfo {
-    if (table::contains(&vault.makers, maker)) {
-        let maker_info = table::borrow(&vault.makers, maker);
-        (*maker_info)
-    } else {
-        (types::new_maker_info(0))
-    }
-}
-
 
 /// Get withdrawable balance considering locked amounts in orders
 public fun get_withdrawable_balance_with_locked<T, IthacaType>(
     _: &MakerOrderCap,
     vault: &MakerVault<T, IthacaType>, 
     maker: address, 
-    tradable_asset: &TradableAsset,
+    symbol: String,
     locked_amount: u64
 ): u64 {
     assert!(vault.version == VERSION, EWrongVersion);
-    let total_collateral = get_maker_collateral(vault, maker, tradable_asset);
+    let total_collateral = get_maker_collateral(vault, maker, symbol);
     if (total_collateral >= locked_amount) {
         total_collateral - locked_amount
     } else {
@@ -551,10 +493,10 @@ public fun get_withdrawable_balance_with_locked<T, IthacaType>(
 /// Get minimum stake amount for a tradable asset
 public fun get_min_stake_amount<T, IthacaType>(
     vault: &MakerVault<T, IthacaType>, 
-    tradable_asset: &TradableAsset
+    symbol: String
 ): u64 {
-    if (table::contains(&vault.custom_min_stake_amounts, *tradable_asset)) {
-        *table::borrow(&vault.custom_min_stake_amounts, *tradable_asset)
+    if (table::contains(&vault.custom_min_stake_amounts, symbol)) {
+        *table::borrow(&vault.custom_min_stake_amounts, symbol)
     } else {
         vault.minimum_stake_amount
     }
@@ -627,16 +569,6 @@ public fun assert_collateral_withdrawn_event(
     amount: u64,
 ) {
     let emitted = event::events_by_type<CollateralWithdrawn>()[0];
-    assert_eq(emitted.maker, maker);
-    assert_eq(emitted.amount, amount);
-}
-
-#[test_only]
-public fun assert_ithaca_staked_event(
-    maker: address,
-    amount: u64,
-) {
-    let emitted = event::events_by_type<IthacaStaked>()[0];
     assert_eq(emitted.maker, maker);
     assert_eq(emitted.amount, amount);
 }

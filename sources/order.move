@@ -5,9 +5,10 @@ use sui::table::{Self, Table};
 use sui::event;
 use sui::clock::{Self, Clock};
 use sui::coin::{Coin};
-use odyssey_sui::types::{Self, Note, NoteStatus, TradableAsset, Actor, SettlementInfo, FeeInfo};
+use odyssey_sui::types::{Self, Note, NoteStatus, Actor, SettlementInfo, FeeInfo};
 use odyssey_sui::vault::{Self, OrderCap};
 use odyssey_sui::maker_vault::{Self, MakerOrderCap};
+use std::string::String;
 
 // === Constants ===
 
@@ -85,8 +86,8 @@ public struct OrderManager<phantom T> has key {
     settlement_infos: Table<u64, SettlementInfo>,
     /// Mapping of taker address to their locked balance
     taker_locked_balances: Table<address, u64>,
-    /// Mapping of maker and asset to locked balance
-    maker_locked_balances: Table<MakerAssetKey, u64>,
+    /// Mapping of maker and symbol to locked balance
+    maker_locked_balances: Table<MakerSymbolKey, u64>,
     /// Mapping of note ID to settled status
     is_note_settled: Table<u64, bool>,
     /// Order capability for interacting with vaults
@@ -105,10 +106,10 @@ public struct StoredNote has store {
     created_at: u64,
 }
 
-/// Key for maker locked balances (maker address + asset)
-public struct MakerAssetKey has copy, drop, store {
+/// Key for maker locked balances (maker address + symbol)
+public struct MakerSymbolKey has copy, drop, store {
     maker: address,
-    asset: TradableAsset,
+    symbol: String,
 }
 
 /// Settlement action to eliminate duplication between outcome determination and processing
@@ -127,7 +128,7 @@ public struct NoteCreated has copy, drop {
     note_id: u64,
     taker: address,
     maker: address,
-    asset: TradableAsset,
+    symbol: String,
     amount: u64,
     expiry_time: u64,
 }
@@ -220,7 +221,7 @@ public fun create_note<T, IthacaType>(
     let expiry_time = types::note_expiry_time(&note);
     let taker = types::note_taker(&note);
     let maker = types::note_maker(&note);
-    let asset = types::note_asset(&note);
+    let symbol = types::note_symbol(&note);
     let spread = types::note_spread(&note);
 
     assert!(amount > 0, EInvalidNote);
@@ -241,7 +242,7 @@ public fun create_note<T, IthacaType>(
     // Check balances
     let taker_balance = taker_withdrawable_balance(order_manager, vault, taker);
     let win_amount = win_payout - amount;
-    let maker_balance = maker_withdrawable_balance(order_manager, maker_vault, maker, *asset);
+    let maker_balance = maker_withdrawable_balance(order_manager, maker_vault, maker, symbol);
 
     assert!(taker_balance >= amount, EInsufficientTakerBalance);
     assert!(maker_balance >= win_amount, EInsufficientMakerBalance);
@@ -261,14 +262,14 @@ public fun create_note<T, IthacaType>(
 
     // Lock balances
     update_taker_locked_balance(order_manager, taker, amount, true);
-    update_maker_locked_balance(order_manager, maker, *asset, win_amount, true);
+    update_maker_locked_balance(order_manager, maker, symbol, win_amount, true);
 
     // Emit event
     event::emit(NoteCreated {
         note_id,
         taker,
         maker,
-        asset: *asset,
+        symbol,
         amount,
         expiry_time,
     });
@@ -397,14 +398,14 @@ public fun taker_withdraw<T>(
 public fun maker_withdraw<T, IthacaType>(
     order_manager: &mut OrderManager<T>,
     maker_vault: &mut maker_vault::MakerVault<T, IthacaType>,
-    tradable_asset: TradableAsset,
+    symbol: String,
     amount: u64,
     ctx: &mut TxContext
 ): Coin<T> {
     assert!(order_manager.version == VERSION, EWrongVersion);
     let sender = tx_context::sender(ctx);
-    let locked_amount = maker_locked_balance(order_manager, sender, tradable_asset);
-    maker_vault::withdraw_collateral(&order_manager.maker_order_cap, maker_vault, sender, tradable_asset, locked_amount, amount, ctx)
+    let locked_amount = maker_locked_balance(order_manager, sender, symbol);
+    maker_vault::withdraw_collateral(&order_manager.maker_order_cap, maker_vault, sender, symbol, locked_amount, amount, ctx)
 }
 
 // === View Functions ===
@@ -431,19 +432,19 @@ public fun maker_withdrawable_balance<T, IthacaType>(
     order_manager: &OrderManager<T>,
     maker_vault: &maker_vault::MakerVault<T, IthacaType>,
     maker: address,
-    tradable_asset: TradableAsset
+    symbol: String
 ): u64 {
-    let locked_amount = maker_locked_balance(order_manager, maker, tradable_asset);
-    maker_vault::get_withdrawable_balance_with_locked(&order_manager.maker_order_cap, maker_vault, maker, &tradable_asset, locked_amount)
+    let locked_amount = maker_locked_balance(order_manager, maker, symbol);
+    maker_vault::get_withdrawable_balance_with_locked(&order_manager.maker_order_cap, maker_vault, maker, symbol, locked_amount)
 }
 
 /// Get maker locked balance for specific asset
 public fun maker_locked_balance<T>(
     order_manager: &OrderManager<T>, 
     maker: address, 
-    asset: TradableAsset
+    symbol: String
 ): u64 {
-    let key = MakerAssetKey { maker, asset };
+    let key = MakerSymbolKey { maker, symbol };
     if (table::contains(&order_manager.maker_locked_balances, key)) {
         *table::borrow(&order_manager.maker_locked_balances, key)
     } else {
@@ -512,11 +513,11 @@ fun update_taker_locked_balance<T>(
 fun update_maker_locked_balance<T>(
     order_manager: &mut OrderManager<T>,
     maker: address,
-    asset: TradableAsset,
+    symbol: String,
     amount: u64,
     is_lock: bool,
 ) {
-    let key = MakerAssetKey { maker, asset };
+    let key = MakerSymbolKey { maker, symbol };
     let current_locked = if (table::contains(&order_manager.maker_locked_balances, key)) {
         table::remove(&mut order_manager.maker_locked_balances, key)
     } else {
@@ -646,7 +647,7 @@ fun process_settlement<T, IthacaType>(
 ) {
     let taker = types::note_taker(note);
     let maker = types::note_maker(note);
-    let asset = *types::note_asset(note);
+    let asset = types::note_symbol(note);
     let amount = types::note_amount(note);
     let win_payout = types::note_win_payout(note);
     let win_amount = win_payout - amount;
@@ -727,7 +728,7 @@ public fun assert_note_created_event(
     expected_note_id: u64,
     expected_taker: address,
     expected_maker: address,
-    expected_asset: TradableAsset,
+    expected_symbol: String,
     expected_amount: u64,
     expected_expiry_time: u64,
 ) {
@@ -736,9 +737,9 @@ public fun assert_note_created_event(
     assert_eq(emitted.taker, expected_taker);
     assert_eq(emitted.maker, expected_maker);
     // Compare enum via string conversion utility to avoid type mismatches
-    let emitted_asset_str = types::tradable_asset_to_string(&emitted.asset);
-    let expected_asset_str = types::tradable_asset_to_string(&expected_asset);
-    assert!(std::string::as_bytes(&emitted_asset_str) == std::string::as_bytes(&expected_asset_str), EInvalidNote);
+    let emitted_asset_str = emitted.symbol;
+    let expected_asset_str = expected_symbol;
+    assert!(emitted_asset_str == expected_asset_str, EInvalidNote);
     assert_eq(emitted.amount, expected_amount);
     assert_eq(emitted.expiry_time, expected_expiry_time);
 }
