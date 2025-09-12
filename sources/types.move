@@ -29,7 +29,8 @@ public enum TradableAsset has copy, drop, store {
     ETH,
     SOL,
     XAU,
-    MSTR
+    MSTR,
+    SUI
 }
 
 /// Trading note/order structure
@@ -58,6 +59,7 @@ public struct MakerInfo has copy, drop, store {
     collateral_sol: u64,
     collateral_xau: u64,
     collateral_mstr: u64,
+    collateral_sui: u64,
 }
 
 /// Settlement information (from OrderV12) - without report field
@@ -125,6 +127,7 @@ public fun new_maker_info(
         collateral_sol: 0,
         collateral_xau: 0,
         collateral_mstr: 0,
+        collateral_sui: 0,
     }
 }
 
@@ -169,6 +172,7 @@ public fun tradable_asset_eth(): TradableAsset { TradableAsset::ETH }
 public fun tradable_asset_sol(): TradableAsset { TradableAsset::SOL }
 public fun tradable_asset_xau(): TradableAsset { TradableAsset::XAU }
 public fun tradable_asset_mstr(): TradableAsset { TradableAsset::MSTR }
+public fun tradable_asset_sui(): TradableAsset { TradableAsset::SUI }
 
 // === Getter functions for Note ===
 
@@ -198,6 +202,7 @@ public fun maker_info_collateral(info: &MakerInfo, asset: &TradableAsset): u64 {
         TradableAsset::SOL => info.collateral_sol,
         TradableAsset::XAU => info.collateral_xau,
         TradableAsset::MSTR => info.collateral_mstr,
+        TradableAsset::SUI => info.collateral_sui,
     }
 }
 
@@ -210,6 +215,7 @@ public fun set_maker_collateral(info: &mut MakerInfo, asset: &TradableAsset, amo
         TradableAsset::SOL => info.collateral_sol = amount,
         TradableAsset::XAU => info.collateral_xau = amount,
         TradableAsset::MSTR => info.collateral_mstr = amount,
+        TradableAsset::SUI => info.collateral_sui = amount,
     }
 }
 
@@ -220,6 +226,7 @@ public fun add_maker_collateral(info: &mut MakerInfo, asset: &TradableAsset, amo
         TradableAsset::SOL => info.collateral_sol = info.collateral_sol + amount,
         TradableAsset::XAU => info.collateral_xau = info.collateral_xau + amount,
         TradableAsset::MSTR => info.collateral_mstr = info.collateral_mstr + amount,
+        TradableAsset::SUI => info.collateral_sui = info.collateral_sui + amount,
     }
 }
 
@@ -230,6 +237,7 @@ public fun subtract_maker_collateral(info: &mut MakerInfo, asset: &TradableAsset
         TradableAsset::SOL => info.collateral_sol = info.collateral_sol - amount,
         TradableAsset::XAU => info.collateral_xau = info.collateral_xau - amount,
         TradableAsset::MSTR => info.collateral_mstr = info.collateral_mstr - amount,
+        TradableAsset::SUI => info.collateral_sui = info.collateral_sui - amount,
     }
 }
 
@@ -256,6 +264,7 @@ public fun tradable_asset_to_string(asset: &TradableAsset): String {
         TradableAsset::SOL => std::string::utf8(b"SOL"),
         TradableAsset::XAU => std::string::utf8(b"XAU"),
         TradableAsset::MSTR => std::string::utf8(b"MSTR"),
+        TradableAsset::SUI => std::string::utf8(b"SUI"),
     }
 }
 
