@@ -438,7 +438,7 @@ public(package) fun add_funds<T, IthacaType>(
 // === View Functions ===
 
 /// Get maker staked tokens for specific asset
-public fun get_maker_staked_tokens<T, IthacaType>(
+public fun get_maker_staked_ithaca<T, IthacaType>(
     vault: &MakerVault<T, IthacaType>,
     maker: address,
     symbol: String

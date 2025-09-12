@@ -4,12 +4,13 @@ module odyssey_sui::test_utils;
 use sui::test_scenario::{Self, Scenario, ctx};
 use sui::clock::{Self, Clock};
 use sui::coin::{Self, Coin};
-use odyssey_sui::types::{Self, Note, TradableAsset, Direction};
+use odyssey_sui::types::{Self, Note, Direction};
 use odyssey_sui::vault::{Self, Vault, VaultAdminCap, OrderCap};
 use odyssey_sui::maker_vault::{Self, MakerVault, MakerVaultAdminCap, MakerOrderCap};
 use odyssey_sui::order::{Self, OrderManager, OrderAdminCap};
 use sui::test_utils::assert_eq;
 use std::option::none;
+use std::string::String;
 
 // Test token types
 public struct USDC has drop {}
@@ -167,11 +168,12 @@ public fun register_test_maker(
     scenario: &mut Scenario,
     maker_vault: &mut MakerVault<USDC, ITHACA>,
     maker: address,
+    symbol: String,
     stake_amount: u64
 ) {
     test_scenario::next_tx(scenario, maker);
     let ithaca_coin = mint_ithaca(scenario, maker, stake_amount);
-    maker_vault::register_maker(maker_vault, ithaca_coin, ctx(scenario));
+    maker_vault::register_maker_symbol(maker_vault, symbol, ithaca_coin, ctx(scenario));
 }
 
 /// Deposit collateral for a maker
@@ -180,12 +182,12 @@ public fun deposit_maker_collateral(
     scenario: &mut Scenario,
     maker_vault: &mut MakerVault<USDC, ITHACA>,
     maker: address,
-    asset: TradableAsset,
+    symbol: String,
     amount: u64
 ) {
     test_scenario::next_tx(scenario, maker);
     let usdc_coin = mint_usdc(scenario, maker, amount);
-    maker_vault::deposit_collateral(maker_vault, asset, usdc_coin, ctx(scenario));
+    maker_vault::deposit_collateral(maker_vault, symbol, usdc_coin, ctx(scenario));
 }
 
 /// Deposit funds for a trader
@@ -201,6 +203,17 @@ public fun deposit_trader_funds(
     vault::deposit(vault, usdc_coin, ctx(scenario));
 }
 
+#[test_only]
+public fun get_btc_symbol(): String {
+    std::string::utf8(b"BTC")
+}
+
+#[test_only]
+public fun get_eth_symbol(): String {
+    std::string::utf8(b"ETH")
+}
+
+
 /// Create a test note with default values
 #[test_only]
 public fun create_test_note(
@@ -213,7 +226,7 @@ public fun create_test_note(
     types::new_note(
         taker,                              // taker
         maker,                              // maker  
-        types::tradable_asset_btc(),        // asset (BTC)
+        get_btc_symbol(),                   // asset (BTC)
         types::direction_up(),              // direction (UP)
         amount,                             // amount
         84000000000000,                     // starting_price (84k USD, 9 decimal precision)
@@ -233,7 +246,7 @@ public fun create_test_note(
 public fun create_custom_note(
     taker: address,
     maker: address,
-    asset: TradableAsset,
+    symbol: String,
     direction: Direction,
     amount: u64,
     starting_price: u64,
@@ -247,7 +260,7 @@ public fun create_custom_note(
     types::new_note(
         taker,
         maker,
-        asset,
+        symbol,
         direction,
         amount,
         starting_price,
@@ -269,17 +282,19 @@ public fun setup_funded_scenario(scenario: &mut Scenario, minimum_stake: Option<
     MakerVault<USDC, ITHACA>,
     OrderManager<USDC>,
     Clock,
-    u64
+    u64,
+    String
 ) {
     let (vault, mut maker_vault, order_manager) = setup_complete_system(scenario, minimum_stake, none());    
     let clock = create_test_clock(scenario, START_MS); // Arbitrary timestamp
 
+    let symbol = get_btc_symbol();
     // Register and fund maker
-    register_test_maker(scenario, &mut maker_vault, MAKER_1, MINIMUM_STAKE);
+    register_test_maker(scenario, &mut maker_vault, MAKER_1, symbol, MINIMUM_STAKE);
     let maker_deposit_amount = 50_000_000_000_000; // 50,000 USDC with 9 decimal precision
-    deposit_maker_collateral(scenario, &mut maker_vault, MAKER_1, types::tradable_asset_btc(), maker_deposit_amount);
+    deposit_maker_collateral(scenario, &mut maker_vault, MAKER_1, symbol, maker_deposit_amount);
     
-    (vault, maker_vault, order_manager, clock, maker_deposit_amount)
+    (vault, maker_vault, order_manager, clock, maker_deposit_amount, symbol)
 }
 
 #[test_only]
