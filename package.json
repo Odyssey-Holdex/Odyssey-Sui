@@ -3,7 +3,8 @@
 		"@mysten/sui": "^1.37.3"
 	},
 	"scripts": {
-		"deploy": "tsx --env-file=.env scripts/deploy.ts"
+		"deploy": "tsx --env-file=.env scripts/deploy.ts",
+		"deploy-multisig": "tsx --env-file=.env scripts/deploy-multisig.ts"
 	},
 	"devDependencies": {
 		"@types/node": "^24.3.0",
