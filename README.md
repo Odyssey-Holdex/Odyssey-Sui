@@ -173,6 +173,13 @@ All critical business logic and user-facing functionality is thoroughly tested. 
 - Internal helper functions with edge cases (70-80% covered)
 - Low-level transfer operations (called during settlement, partially covered)
 
+## Security Audits
+   
+   - [Audit Report by Hashlock](https://odyssey.ithacaprotocol.io/odyssey-sui-audit.pdf) - September 2025
+     - Audited commit: `9cd89fda4b92a3d06fff8cb34f965bcf1f73dd5c`
+     - Status: All issues resolved
+
+
 ## 📚 **Documentation**
 
 For detailed information about the Move contracts and their functionality, refer to the inline documentation in the source files:
