@@ -10,7 +10,7 @@ use odyssey_sui::maker_vault::{Self, MakerVault, MakerVaultAdminCap, MakerOrderC
 use odyssey_sui::order::{Self, OrderManager, OrderAdminCap};
 use sui::test_utils::assert_eq;
 use std::option::none;
-use std::string::String;
+use std::string::{Self, String};
 
 // Test token types
 public struct USDC has drop {}
@@ -91,7 +91,15 @@ public fun setup_maker_vault(scenario: &mut Scenario, mut minimum_stake: Option<
     } else {
         MINIMUM_STAKE
     };
-    let maker_order_cap = maker_vault::initialize<USDC, ITHACA>(&maker_vault_admin_cap, minimum_stake_amount, ctx(scenario));
+
+    // Create initial symbols vector with common trading symbols
+    let mut initial_symbols = vector::empty<String>();
+    vector::push_back(&mut initial_symbols, string::utf8(b"BTC"));
+    vector::push_back(&mut initial_symbols, string::utf8(b"ETH"));
+    vector::push_back(&mut initial_symbols, string::utf8(b"SOL"));
+    vector::push_back(&mut initial_symbols, string::utf8(b"USDC"));
+
+    let maker_order_cap = maker_vault::initialize<USDC, ITHACA>(&maker_vault_admin_cap, minimum_stake_amount, initial_symbols, ctx(scenario));
     scenario.return_to_sender(maker_vault_admin_cap);
 
     test_scenario::next_tx(scenario, governor);

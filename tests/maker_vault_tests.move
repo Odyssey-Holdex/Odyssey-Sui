@@ -4,6 +4,7 @@ module odyssey_sui::maker_vault_tests;
 use sui::test_scenario::{Self, ctx};
 use sui::test_utils::assert_eq;
 use std::option::{none, some};
+use std::string;
 
 use odyssey_sui::maker_vault::{Self, MakerVaultAdminCap};
 use odyssey_sui::test_utils::{
@@ -63,7 +64,9 @@ public fun test_initialize_fails_with_zero_minimum_stake() {
 
     test_scenario::next_tx(&mut scenario, governor);
     let admin_cap = scenario.take_from_sender<MakerVaultAdminCap>();
-    let order_cap = maker_vault::initialize<USDC, ITHACA>(&admin_cap, 0, ctx(&mut scenario));
+    let mut initial_symbols = vector::empty<string::String>();
+    vector::push_back(&mut initial_symbols, string::utf8(b"BTC"));
+    let order_cap = maker_vault::initialize<USDC, ITHACA>(&admin_cap, 0, initial_symbols, ctx(&mut scenario));
     transfer::public_transfer(order_cap, governor);
     scenario.return_to_sender(admin_cap);
 

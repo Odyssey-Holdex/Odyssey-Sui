@@ -318,7 +318,9 @@ public fun test_maker_vault_get_minimum_stake() {
     test_scenario::next_tx(&mut scenario, governor);
     let admin_cap = scenario.take_from_sender<MakerVaultAdminCap>();
     let default_min = 200_000_000;
-    let order_cap = maker_vault::initialize<USDC, ITHACA>(&admin_cap, default_min, ctx(&mut scenario));
+    let mut initial_symbols = vector::empty<string::String>();
+    vector::push_back(&mut initial_symbols, string::utf8(b"BTC"));
+    let order_cap = maker_vault::initialize<USDC, ITHACA>(&admin_cap, default_min, initial_symbols, ctx(&mut scenario));
     scenario.return_to_sender(admin_cap);
     transfer::public_transfer(order_cap, governor);
 
@@ -377,7 +379,9 @@ public fun test_order_get_note_count() {
 
     test_scenario::next_tx(&mut scenario, governor);
     let maker_admin_cap = scenario.take_from_sender<MakerVaultAdminCap>();
-    let maker_order_cap = maker_vault::initialize<USDC, ITHACA>(&maker_admin_cap, 200_000_000, ctx(&mut scenario));
+    let mut initial_symbols = vector::empty<string::String>();
+    vector::push_back(&mut initial_symbols, string::utf8(b"BTC"));
+    let maker_order_cap = maker_vault::initialize<USDC, ITHACA>(&maker_admin_cap, 200_000_000, initial_symbols, ctx(&mut scenario));
     scenario.return_to_sender(maker_admin_cap);
 
     test_scenario::next_tx(&mut scenario, governor);
@@ -415,7 +419,9 @@ public fun test_order_get_treasury() {
 
     test_scenario::next_tx(&mut scenario, governor);
     let maker_admin_cap = scenario.take_from_sender<MakerVaultAdminCap>();
-    let maker_order_cap = maker_vault::initialize<USDC, ITHACA>(&maker_admin_cap, 200_000_000, ctx(&mut scenario));
+    let mut initial_symbols = vector::empty<string::String>();
+    vector::push_back(&mut initial_symbols, string::utf8(b"BTC"));
+    let maker_order_cap = maker_vault::initialize<USDC, ITHACA>(&maker_admin_cap, 200_000_000, initial_symbols, ctx(&mut scenario));
     scenario.return_to_sender(maker_admin_cap);
 
     test_scenario::next_tx(&mut scenario, governor);

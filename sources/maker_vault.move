@@ -42,6 +42,9 @@ const ENotUpgrade: vector<u8> = b"Migration is not an upgrade";
 #[error]
 const EWrongVersion: vector<u8> = b"Calling functions from the wrong package version";
 
+#[error]
+const EInvalidSymbol: vector<u8> = b"Symbol is not allowed for maker registration";
+
 // === Structs ===
 
 /// Administrative capability for maker vault operations
@@ -67,6 +70,8 @@ public struct MakerVault<phantom T, phantom IthacaType> has key {
     minimum_stake_amount: u64,
     /// Custom minimum stake amounts for specific assets
     custom_min_stake_amounts: Table<String, u64>,
+    /// Whitelist of allowed trading symbols
+    allowed_symbols: Table<String, bool>,
     /// The actual collateral coin balance held by the vault
     collateral_balance: Balance<T>,
     /// The Ithaca token balance held by the vault for staking
@@ -91,6 +96,16 @@ public struct MakerRegistered has copy, drop {
 /// Emitted when a maker unregisters
 public struct MakerUnregistered has copy, drop {
     maker: address,
+}
+
+/// Emitted when a symbol is added to allowed list
+public struct SymbolAdded has copy, drop {
+    symbol: String,
+}
+
+/// Emitted when a symbol is removed from allowed list
+public struct SymbolRemoved has copy, drop {
+    symbol: String,
 }
 
 /// Emitted when maker deposits collateral
@@ -137,12 +152,24 @@ fun init(ctx: &mut TxContext) {
 public fun initialize<T, IthacaType>(
     admin_cap: &MakerVaultAdminCap,
     minimum_stake_amount: u64,
+    initial_symbols: vector<String>,
     ctx: &mut TxContext
 ): (MakerOrderCap) {
     assert!(minimum_stake_amount > 0, ENotZeroAmount);
-    
+
     let order_cap = MakerOrderCap {
         id: object::new(ctx),
+    };
+
+    let mut allowed_symbols = table::new<String, bool>(ctx);
+
+    // Add initial symbols to the allowed list
+    let mut i = 0;
+    let len = vector::length(&initial_symbols);
+    while (i < len) {
+        let symbol = *vector::borrow(&initial_symbols, i);
+        table::add(&mut allowed_symbols, symbol, true);
+        i = i + 1;
     };
 
     let vault = MakerVault<T, IthacaType> {
@@ -152,6 +179,7 @@ public fun initialize<T, IthacaType>(
         makers: table::new(ctx),
         minimum_stake_amount,
         custom_min_stake_amounts: table::new(ctx),
+        allowed_symbols,
         collateral_balance: balance::zero<T>(),
         ithaca_balance: balance::zero<IthacaType>(),
     };
@@ -169,7 +197,10 @@ public fun register_maker_symbol<T, IthacaType>(
     ctx: &mut TxContext
 ) {
     assert!(vault.version == VERSION, EWrongVersion);
-    
+
+    // Validate that the symbol is allowed
+    assert!(table::contains(&vault.allowed_symbols, symbol), EInvalidSymbol);
+
     let sender = tx_context::sender(ctx);
     let stake_amount = coin::value(&ithaca_payment);
 
@@ -177,7 +208,7 @@ public fun register_maker_symbol<T, IthacaType>(
         maker: sender,
         symbol,
     };
-    
+
     assert!(stake_amount > 0, ENotZeroAmount);
     assert!(!table::contains(&vault.makers, key), EMakerAlreadyRegistered);
 
@@ -331,6 +362,46 @@ public fun set_minimum_stake_amount<T, IthacaType>(
     event::emit(MinimumStakeAmountSet {
         amount,
     });
+}
+
+/// Add a symbol to the allowed list (admin only)
+public fun add_allowed_symbol<T, IthacaType>(
+    admin_cap: &MakerVaultAdminCap,
+    vault: &mut MakerVault<T, IthacaType>,
+    symbol: String,
+) {
+    assert!(vault.admin == object::id(admin_cap), ENotAdmin);
+    assert!(vault.version == VERSION, EWrongVersion);
+
+    if (!table::contains(&vault.allowed_symbols, symbol)) {
+        table::add(&mut vault.allowed_symbols, symbol, true);
+
+        event::emit(SymbolAdded { symbol });
+    }
+}
+
+/// Remove a symbol from the allowed list (admin only)
+public fun remove_allowed_symbol<T, IthacaType>(
+    admin_cap: &MakerVaultAdminCap,
+    vault: &mut MakerVault<T, IthacaType>,
+    symbol: String,
+) {
+    assert!(vault.admin == object::id(admin_cap), ENotAdmin);
+    assert!(vault.version == VERSION, EWrongVersion);
+
+    if (table::contains(&vault.allowed_symbols, symbol)) {
+        table::remove(&mut vault.allowed_symbols, symbol);
+
+        event::emit(SymbolRemoved { symbol });
+    }
+}
+
+/// Check if a symbol is allowed
+public fun is_symbol_allowed<T, IthacaType>(
+    vault: &MakerVault<T, IthacaType>,
+    symbol: String,
+): bool {
+    table::contains(&vault.allowed_symbols, symbol)
 }
 
 /// Set custom minimum stake amount for specific asset (admin only)
