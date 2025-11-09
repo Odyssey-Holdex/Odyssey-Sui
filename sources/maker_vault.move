@@ -366,11 +366,10 @@ public fun set_minimum_stake_amount<T, IthacaType>(
 
 /// Add a symbol to the allowed list (admin only)
 public fun add_allowed_symbol<T, IthacaType>(
-    admin_cap: &MakerVaultAdminCap,
+    _: &MakerVaultAdminCap,
     vault: &mut MakerVault<T, IthacaType>,
     symbol: String,
 ) {
-    assert!(vault.admin == object::id(admin_cap), ENotAdmin);
     assert!(vault.version == VERSION, EWrongVersion);
 
     if (!table::contains(&vault.allowed_symbols, symbol)) {
@@ -382,11 +381,10 @@ public fun add_allowed_symbol<T, IthacaType>(
 
 /// Remove a symbol from the allowed list (admin only)
 public fun remove_allowed_symbol<T, IthacaType>(
-    admin_cap: &MakerVaultAdminCap,
+    _: &MakerVaultAdminCap,
     vault: &mut MakerVault<T, IthacaType>,
     symbol: String,
 ) {
-    assert!(vault.admin == object::id(admin_cap), ENotAdmin);
     assert!(vault.version == VERSION, EWrongVersion);
 
     if (table::contains(&vault.allowed_symbols, symbol)) {
@@ -547,12 +545,11 @@ public fun get_maker_collateral<T, IthacaType>(
 /// Get withdrawable balance considering locked amounts in orders
 public fun get_withdrawable_balance_with_locked<T, IthacaType>(
     _: &MakerOrderCap,
-    vault: &MakerVault<T, IthacaType>, 
-    maker: address, 
+    vault: &MakerVault<T, IthacaType>,
+    maker: address,
     symbol: String,
     locked_amount: u64
 ): u64 {
-    assert!(vault.version == VERSION, EWrongVersion);
     let total_collateral = get_maker_collateral(vault, maker, symbol);
     if (total_collateral >= locked_amount) {
         total_collateral - locked_amount
