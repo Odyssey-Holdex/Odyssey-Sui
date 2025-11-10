@@ -89,27 +89,34 @@ public struct MakerSymbolKey has copy, drop, store {
 
 /// Emitted when a maker registers
 public struct MakerRegistered has copy, drop {
+    vault_id: ID,
     maker: address,
+    symbol: String,
     stake_amount: u64,
 }
 
 /// Emitted when a maker unregisters
 public struct MakerUnregistered has copy, drop {
+    vault_id: ID,
     maker: address,
+    symbol: String,
 }
 
 /// Emitted when a symbol is added to allowed list
 public struct SymbolAdded has copy, drop {
+    vault_id: ID,
     symbol: String,
 }
 
 /// Emitted when a symbol is removed from allowed list
 public struct SymbolRemoved has copy, drop {
+    vault_id: ID,
     symbol: String,
 }
 
 /// Emitted when maker deposits collateral
 public struct CollateralDeposited has copy, drop {
+    vault_id: ID,
     maker: address,
     symbol: String,
     amount: u64,
@@ -117,6 +124,7 @@ public struct CollateralDeposited has copy, drop {
 
 /// Emitted when maker withdraws collateral
 public struct CollateralWithdrawn has copy, drop {
+    vault_id: ID,
     maker: address,
     symbol: String,
     amount: u64,
@@ -124,11 +132,13 @@ public struct CollateralWithdrawn has copy, drop {
 
 /// Emitted when minimum stake amount is set
 public struct MinimumStakeAmountSet has copy, drop {
+    vault_id: ID,
     amount: u64,
 }
 
 /// Emitted when custom minimum stake amount is set
 public struct CustomMinStakeAmountSet has copy, drop {
+    vault_id: ID,
     symbol: String,
     amount: u64,
 }
@@ -225,7 +235,9 @@ public fun register_maker_symbol<T, IthacaType>(
 
     // Emit event
     event::emit(MakerRegistered {
+        vault_id: object::id(vault),
         maker: sender,
+        symbol,
         stake_amount,
     });
 }
@@ -258,7 +270,9 @@ public fun unregister_maker<T, IthacaType>(
 
     // Emit event
     event::emit(MakerUnregistered {
+        vault_id: object::id(vault),
         maker: sender,
+        symbol,
     });
 
     withdrawn_coin
@@ -293,6 +307,7 @@ public fun deposit_collateral<T, IthacaType>(
 
     // Emit event
     event::emit(CollateralDeposited {
+        vault_id: object::id(vault),
         maker: sender,
         symbol,
         amount,
@@ -333,6 +348,7 @@ public fun withdraw_collateral<T, IthacaType>(
 
     // Emit event
     event::emit(CollateralWithdrawn {
+        vault_id: object::id(vault),
         maker,
         symbol,
         amount,
@@ -361,6 +377,7 @@ public fun set_minimum_stake_amount<T, IthacaType>(
     vault.minimum_stake_amount = amount;
 
     event::emit(MinimumStakeAmountSet {
+        vault_id: object::id(vault),
         amount,
     });
 }
@@ -376,7 +393,10 @@ public fun add_allowed_symbol<T, IthacaType>(
     if (!table::contains(&vault.allowed_symbols, symbol)) {
         table::add(&mut vault.allowed_symbols, symbol, true);
 
-        event::emit(SymbolAdded { symbol });
+        event::emit(SymbolAdded {
+            vault_id: object::id(vault),
+            symbol
+        });
     }
 }
 
@@ -391,7 +411,10 @@ public fun remove_allowed_symbol<T, IthacaType>(
     if (table::contains(&vault.allowed_symbols, symbol)) {
         table::remove(&mut vault.allowed_symbols, symbol);
 
-        event::emit(SymbolRemoved { symbol });
+        event::emit(SymbolRemoved {
+            vault_id: object::id(vault),
+            symbol
+        });
     }
 }
 
@@ -420,6 +443,7 @@ public fun set_custom_min_stake_amount<T, IthacaType>(
     table::add(&mut vault.custom_min_stake_amounts, symbol, amount);
 
     event::emit(CustomMinStakeAmountSet {
+        vault_id: object::id(vault),
         symbol,
         amount,
     });

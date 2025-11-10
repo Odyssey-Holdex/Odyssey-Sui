@@ -60,12 +60,14 @@ public struct Vault<phantom T> has key {
 
 /// Emitted when trader deposits assets
 public struct Deposited has copy, drop {
+    vault_id: ID,
     trader: address,
     amount: u64,
 }
 
 /// Emitted when trader withdraws assets
 public struct Withdrawn has copy, drop {
+    vault_id: ID,
     trader: address,
     amount: u64,
 }
@@ -131,6 +133,7 @@ public fun deposit<T>(
 
     // Emit event
     event::emit(Deposited {
+        vault_id: object::id(vault),
         trader: sender,
         amount,
     });
@@ -164,6 +167,7 @@ public fun withdraw<T>(
 
     // Emit event
     event::emit(Withdrawn {
+        vault_id: object::id(vault),
         trader: taker,
         amount,
     });

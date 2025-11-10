@@ -125,6 +125,7 @@ public struct SettlementAction has drop {
 
 /// Emitted when a new note is created
 public struct NoteCreated has copy, drop {
+    order_manager_id: ID,
     note_id: u64,
     taker: address,
     maker: address,
@@ -135,7 +136,10 @@ public struct NoteCreated has copy, drop {
 
 /// Emitted when a note is settled
 public struct NoteSettled has copy, drop {
+    order_manager_id: ID,
     note_id: u64,
+    taker: address,
+    maker: address,
     status: NoteStatus,
     settlement_price: u64,
     payout: u64,
@@ -144,10 +148,12 @@ public struct NoteSettled has copy, drop {
 
 /// Emitted when fee percentages are changed
 public struct TakerFeePercentageChanged has copy, drop {
+    order_manager_id: ID,
     taker_fee_percentage: u64,
 }
 
 public struct MakerFeePercentageChanged has copy, drop {
+    order_manager_id: ID,
     maker_fee_percentage: u64,
 }
 
@@ -266,6 +272,7 @@ public fun create_note<T, IthacaType>(
 
     // Emit event
     event::emit(NoteCreated {
+        order_manager_id: object::id(order_manager),
         note_id,
         taker,
         maker,
@@ -332,7 +339,10 @@ public fun settle_note<T, IthacaType>(
 
     // Emit event
     event::emit(NoteSettled {
+        order_manager_id: object::id(order_manager),
         note_id,
+        taker: types::note_taker(&note_copy),
+        maker: types::note_maker(&note_copy),
         status: final_status,
         settlement_price: spot_price,
         payout: final_payout,
@@ -361,6 +371,7 @@ public fun set_taker_fee_percentage<T>(
     );
 
     event::emit(TakerFeePercentageChanged {
+        order_manager_id: object::id(order_manager),
         taker_fee_percentage,
     });
 }
@@ -379,6 +390,7 @@ public fun set_maker_fee_percentage<T>(
     );
 
     event::emit(MakerFeePercentageChanged {
+        order_manager_id: object::id(order_manager),
         maker_fee_percentage,
     });
 }
