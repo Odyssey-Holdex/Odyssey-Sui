@@ -157,6 +157,13 @@ public struct MakerFeePercentageChanged has copy, drop {
     maker_fee_percentage: u64,
 }
 
+/// Emitted when order manager is migrated to a new version
+public struct OrderManagerMigrated has copy, drop {
+    order_manager_id: ID,
+    old_version: u64,
+    new_version: u64,
+}
+
 // === Initialization ===
 
 fun init(ctx: &mut TxContext) {
@@ -354,7 +361,15 @@ public fun settle_note<T, IthacaType>(
 entry fun migrate<T>(order_manager: &mut OrderManager<T>, admin_cap: &OrderAdminCap) {
     assert!(order_manager.admin == object::id(admin_cap), ENotAdmin);
     assert!(order_manager.version < VERSION, ENotUpgrade);
+
+    let old_version = order_manager.version;
     order_manager.version = VERSION;
+
+    event::emit(OrderManagerMigrated {
+        order_manager_id: object::id(order_manager),
+        old_version,
+        new_version: VERSION,
+    });
 }
 
 /// Set taker fee percentage (admin only)

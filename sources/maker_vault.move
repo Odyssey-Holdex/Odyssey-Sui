@@ -143,6 +143,13 @@ public struct CustomMinStakeAmountSet has copy, drop {
     amount: u64,
 }
 
+/// Emitted when maker vault is migrated to a new version
+public struct MakerVaultMigrated has copy, drop {
+    vault_id: ID,
+    old_version: u64,
+    new_version: u64,
+}
+
 // === Initialization ===
 
 fun init(ctx: &mut TxContext) {
@@ -363,7 +370,15 @@ public fun withdraw_collateral<T, IthacaType>(
 entry fun migrate<T, IthacaType>(vault: &mut MakerVault<T, IthacaType>, admin_cap: &MakerVaultAdminCap) {
     assert!(vault.admin == object::id(admin_cap), ENotAdmin);
     assert!(vault.version < VERSION, ENotUpgrade);
+
+    let old_version = vault.version;
     vault.version = VERSION;
+
+    event::emit(MakerVaultMigrated {
+        vault_id: object::id(vault),
+        old_version,
+        new_version: VERSION,
+    });
 }
 
 /// Set minimum stake amount (admin only)

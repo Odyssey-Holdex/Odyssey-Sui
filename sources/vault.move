@@ -72,6 +72,13 @@ public struct Withdrawn has copy, drop {
     amount: u64,
 }
 
+/// Emitted when vault is migrated to a new version
+public struct VaultMigrated has copy, drop {
+    vault_id: ID,
+    old_version: u64,
+    new_version: u64,
+}
+
 
 fun init(ctx: &mut TxContext) {
     let admin_cap = VaultAdminCap {
@@ -181,7 +188,15 @@ public fun withdraw<T>(
 entry fun migrate<T>(vault: &mut Vault<T>, admin_cap: &VaultAdminCap) {
     assert!(vault.admin == object::id(admin_cap), ENotAdmin);
     assert!(vault.version < VERSION, ENotUpgrade);
+
+    let old_version = vault.version;
     vault.version = VERSION;
+
+    event::emit(VaultMigrated {
+        vault_id: object::id(vault),
+        old_version,
+        new_version: VERSION,
+    });
 }
 
 // Note: Asset type changes not supported in Move - types are immutable after creation
