@@ -261,6 +261,23 @@ public fun test_set_minimum_stake_success() {
     cleanup_scenario(scenario)
 }
 
+#[test]
+#[expected_failure(abort_code = maker_vault::ENotZeroAmount)]
+public fun test_set_minimum_stake_fails_with_zero() {
+    let mut scenario = setup_test_scenario();
+    let (governor, _, _, _, _, _, _) = get_test_addresses();
+    let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
+    transfer::public_transfer(maker_order_cap, governor);
+
+    test_scenario::next_tx(&mut scenario, governor);
+    let admin_cap = scenario.take_from_sender<MakerVaultAdminCap>();
+    maker_vault::set_minimum_stake_amount(&admin_cap, &mut maker_vault, 0);
+    scenario.return_to_sender(admin_cap);
+
+    test_scenario::return_shared(maker_vault);
+    cleanup_scenario(scenario)
+}
+
 // ==========
 // Set Custom Minimum Stake Tests
 // ==========
@@ -351,6 +368,24 @@ public fun test_custom_minimum_stake_other_asset_allows_deposit() {
     let usdc_eth = mint_usdc(&mut scenario, maker1, 2_000);
     maker_vault::deposit_collateral(&mut maker_vault, eth, usdc_eth, ctx(&mut scenario));
     maker_vault::assert_collateral_deposited_event(maker1, 2_000);
+
+    test_scenario::return_shared(maker_vault);
+    cleanup_scenario(scenario)
+}
+
+#[test]
+#[expected_failure(abort_code = maker_vault::ENotZeroAmount)]
+public fun test_set_custom_minimum_stake_fails_with_zero() {
+    let mut scenario = setup_test_scenario();
+    let (governor, _, _, _, _, _, _) = get_test_addresses();
+    let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
+    transfer::public_transfer(maker_order_cap, governor);
+
+    test_scenario::next_tx(&mut scenario, governor);
+    let admin_cap = scenario.take_from_sender<MakerVaultAdminCap>();
+    let btc = get_btc_symbol();
+    maker_vault::set_custom_min_stake_amount(&admin_cap, &mut maker_vault, btc, 0);
+    scenario.return_to_sender(admin_cap);
 
     test_scenario::return_shared(maker_vault);
     cleanup_scenario(scenario)

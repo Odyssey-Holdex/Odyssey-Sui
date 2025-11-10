@@ -357,6 +357,7 @@ public fun set_minimum_stake_amount<T, IthacaType>(
     amount: u64,
 ) {
     assert!(vault.version == VERSION, EWrongVersion);
+    assert!(amount > 0, ENotZeroAmount);
     vault.minimum_stake_amount = amount;
 
     event::emit(MinimumStakeAmountSet {
@@ -410,11 +411,12 @@ public fun set_custom_min_stake_amount<T, IthacaType>(
     amount: u64,
 ) {
     assert!(vault.version == VERSION, EWrongVersion);
-    
+    assert!(amount > 0, ENotZeroAmount);
+
     if (table::contains(&vault.custom_min_stake_amounts, symbol)) {
         table::remove(&mut vault.custom_min_stake_amounts, symbol);
     };
-    
+
     table::add(&mut vault.custom_min_stake_amounts, symbol, amount);
 
     event::emit(CustomMinStakeAmountSet {
