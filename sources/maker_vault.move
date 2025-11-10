@@ -302,7 +302,7 @@ public fun deposit_collateral<T, IthacaType>(
 /// Withdraw collateral for a specific tradable asset (order module only)
 /// This considers locked amounts in orders for security
 public fun withdraw_collateral<T, IthacaType>(
-    order_cap: &MakerOrderCap,
+    _order_cap: &MakerOrderCap,
     vault: &mut MakerVault<T, IthacaType>,
     maker: address,
     symbol: String,
@@ -319,7 +319,7 @@ public fun withdraw_collateral<T, IthacaType>(
     };
     assert!(table::contains(&vault.makers, key), EMakerNotAvailable);
 
-    let withdrawable_balance = get_withdrawable_balance_with_locked(order_cap, vault, maker, symbol, locked_amount);
+    let withdrawable_balance = get_withdrawable_balance_with_locked(vault, maker, symbol, locked_amount);
     assert!(amount <= withdrawable_balance, EInsufficientCollateral);
 
     let maker_info = table::borrow_mut(&mut vault.makers, key);
@@ -544,7 +544,6 @@ public fun get_maker_collateral<T, IthacaType>(
 
 /// Get withdrawable balance considering locked amounts in orders
 public fun get_withdrawable_balance_with_locked<T, IthacaType>(
-    _: &MakerOrderCap,
     vault: &MakerVault<T, IthacaType>,
     maker: address,
     symbol: String,

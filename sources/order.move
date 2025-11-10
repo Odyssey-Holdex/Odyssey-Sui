@@ -425,7 +425,7 @@ public fun taker_withdrawable_balance<T>(
     taker: address
 ): u64 {
     let locked_amount = taker_locked_balance(order_manager, taker);
-    vault::get_withdrawable_balance_with_locked(&order_manager.vault_order_cap, vault, taker, locked_amount)
+    vault::get_withdrawable_balance_with_locked(vault, taker, locked_amount)
 }
 
 public fun maker_withdrawable_balance<T, IthacaType>(
@@ -435,7 +435,7 @@ public fun maker_withdrawable_balance<T, IthacaType>(
     symbol: String
 ): u64 {
     let locked_amount = maker_locked_balance(order_manager, maker, symbol);
-    maker_vault::get_withdrawable_balance_with_locked(&order_manager.maker_order_cap, maker_vault, maker, symbol, locked_amount)
+    maker_vault::get_withdrawable_balance_with_locked(maker_vault, maker, symbol, locked_amount)
 }
 
 /// Get maker locked balance for specific asset

@@ -642,7 +642,6 @@ public fun test_get_withdrawable_balance_with_locked_view() {
     test_scenario::next_tx(&mut scenario, maker1);
     // Use zero-locked and then some locked to validate subtraction
     let withdrawable_0 = maker_vault::get_withdrawable_balance_with_locked(
-        &maker_order_cap,
         &maker_vault,
         maker1,
         get_btc_symbol(),
@@ -652,7 +651,6 @@ public fun test_get_withdrawable_balance_with_locked_view() {
 
     let locked = 4_000;
     let withdrawable_locked = maker_vault::get_withdrawable_balance_with_locked(
-        &maker_order_cap,
         &maker_vault,
         maker1,
         get_btc_symbol(),

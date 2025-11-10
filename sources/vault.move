@@ -138,7 +138,7 @@ public fun deposit<T>(
 
 /// Withdraw assets from the vault
 public fun withdraw<T>(
-    order_cap: &OrderCap, // Order capability to restrict access
+    _order_cap: &OrderCap, // Order capability to restrict access
     vault: &mut Vault<T>,
     taker: address,
     amount: u64,
@@ -148,7 +148,7 @@ public fun withdraw<T>(
     assert!(vault.version == VERSION, EWrongVersion);
     assert!(amount > 0, ENotZeroAmount);
 
-    let withdrawable_balance = get_withdrawable_balance_with_locked(order_cap, vault, taker, locked_amount);
+    let withdrawable_balance = get_withdrawable_balance_with_locked(vault, taker, locked_amount);
     
     assert!(amount <= withdrawable_balance, EInsufficientBalance);
 
@@ -278,12 +278,10 @@ public fun total_asset_available<T>(vault: &Vault<T>): u64 {
 
 /// Get withdrawable balance considering locked amounts in orders
 public fun get_withdrawable_balance_with_locked<T>(
-    _: &OrderCap, // Order capability to restrict access
-    vault: &Vault<T>, 
-    taker: address, 
+    vault: &Vault<T>,
+    taker: address,
     locked_amount: u64
 ): u64 {
-    assert!(vault.version == VERSION, EWrongVersion);
     let total_balance = taker_balance(vault, taker);
     if (total_balance >= locked_amount) {
         total_balance - locked_amount
