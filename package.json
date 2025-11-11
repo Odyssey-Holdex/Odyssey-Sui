@@ -1,14 +1,15 @@
 {
-	"dependencies": {
-		"@mysten/sui": "^1.37.3"
-	},
-	"scripts": {
-		"deploy": "tsx --env-file=.env scripts/deploy.ts",
-		"deploy-multisig": "tsx --env-file=.env scripts/deploy-multisig.ts"
-	},
-	"devDependencies": {
-		"@types/node": "^24.3.0",
-		"tsx": "^4.20.4",
-		"typescript": "^5.9.2"
-	}
+  "dependencies": {
+    "@mysten/sui": "^1.37.3"
+  },
+  "scripts": {
+    "deploy": "tsx --env-file=.env scripts/deploy.ts",
+    "deploy-multisig": "tsx --env-file=.env scripts/deploy-multisig.ts",
+    "transfer-admin-caps": "tsx --env-file=.env scripts/transfer-admin-caps.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.4",
+    "typescript": "^5.9.2"
+  }
 }
