@@ -236,6 +236,7 @@ public fun create_note<T, IthacaType>(
     let maker = types::note_maker(&note);
     let symbol = types::note_symbol(&note);
     let spread = types::note_spread(&note);
+    let starting_price = types::note_starting_price(&note);
 
     assert!(amount > 0, EInvalidNote);
     assert!(taker != @0x0, EInvalidNote);
@@ -250,6 +251,8 @@ public fun create_note<T, IthacaType>(
     let start_time = types::note_start_time(&note);
     assert!(almost_win_payout > 0 && almost_win_payout <= win_payout, EInvalidPayout);
     assert!(almost_win_spread <= spread, EInvalidSpread);
+    assert!(starting_price >= spread, EInvalidSpread);
+    assert!(starting_price >= almost_win_spread, EInvalidSpread);
     assert!(start_time <= expiry_time, EInvalidExpiryTime);
 
     // Check balances
