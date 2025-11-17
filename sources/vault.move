@@ -17,9 +17,6 @@ const VERSION: u64 = 1;
 const ENotZeroAmount: vector<u8> = b"Amount must be greater than zero";
 
 #[error]
-const ENotZeroAddress: vector<u8> = b"Address cannot be zero";
-
-#[error]
 const EInsufficientBalance: vector<u8> = b"Insufficient balance for this operation";
 
 #[error]
@@ -315,16 +312,6 @@ public fun get_withdrawable_balance_with_locked<T>(
 /// Check if vault has sufficient balance for withdrawal
 public fun check_vault_balance<T>(vault: &Vault<T>, amount: u64): bool {
     balance::value(&vault.balance) >= amount
-}
-
-/// Validate that amount is not zero
-public fun validate_amount(amount: u64) {
-    assert!(amount > 0, ENotZeroAmount);
-}
-
-/// Validate that address is not zero
-public fun validate_address(addr: address) {
-    assert!(addr != @0x0, ENotZeroAddress);
 }
 
 // --------------------

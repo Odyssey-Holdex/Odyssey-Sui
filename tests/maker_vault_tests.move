@@ -23,13 +23,11 @@ use odyssey_sui::test_utils::{
     USDC,
     ITHACA,
 };
-use odyssey_sui::types;
 use odyssey_sui::order;
 use odyssey_sui::order::CoordinatorCap;
 use odyssey_sui::test_utils::get_minimum_stake;
 use odyssey_sui::test_utils::deposit_trader_funds;
 use odyssey_sui::test_utils::get_btc_symbol;
-use odyssey_sui::maker_vault::EMakerNotAvailable;
 use odyssey_sui::test_utils::get_eth_symbol;
 
 
