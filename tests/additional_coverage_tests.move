@@ -59,33 +59,6 @@ public fun test_vault_check_balance_helper() {
     cleanup_scenario(scenario)
 }
 
-#[test]
-public fun test_vault_validate_amount_success() {
-    vault::validate_amount(1);
-    vault::validate_amount(100);
-    vault::validate_amount(999999);
-}
-
-#[test]
-#[expected_failure(abort_code = vault::ENotZeroAmount)]
-public fun test_vault_validate_amount_zero_fails() {
-    vault::validate_amount(0);
-}
-
-#[test]
-public fun test_vault_validate_address_success() {
-    let (_, trader1, trader2, _, _, _, _) = get_test_addresses();
-    vault::validate_address(trader1);
-    vault::validate_address(trader2);
-    vault::validate_address(@0x1234);
-}
-
-#[test]
-#[expected_failure(abort_code = vault::ENotZeroAddress)]
-public fun test_vault_validate_address_zero_fails() {
-    vault::validate_address(@0x0);
-}
-
 // ==========
 // Types Module Coverage Tests
 // ==========
@@ -318,7 +291,9 @@ public fun test_maker_vault_get_minimum_stake() {
     test_scenario::next_tx(&mut scenario, governor);
     let admin_cap = scenario.take_from_sender<MakerVaultAdminCap>();
     let default_min = 200_000_000;
-    let order_cap = maker_vault::initialize<USDC, ITHACA>(&admin_cap, default_min, ctx(&mut scenario));
+    let mut initial_symbols = vector::empty<string::String>();
+    vector::push_back(&mut initial_symbols, string::utf8(b"BTC"));
+    let order_cap = maker_vault::initialize<USDC, ITHACA>(&admin_cap, default_min, initial_symbols, ctx(&mut scenario));
     scenario.return_to_sender(admin_cap);
     transfer::public_transfer(order_cap, governor);
 
@@ -377,7 +352,9 @@ public fun test_order_get_note_count() {
 
     test_scenario::next_tx(&mut scenario, governor);
     let maker_admin_cap = scenario.take_from_sender<MakerVaultAdminCap>();
-    let maker_order_cap = maker_vault::initialize<USDC, ITHACA>(&maker_admin_cap, 200_000_000, ctx(&mut scenario));
+    let mut initial_symbols = vector::empty<string::String>();
+    vector::push_back(&mut initial_symbols, string::utf8(b"BTC"));
+    let maker_order_cap = maker_vault::initialize<USDC, ITHACA>(&maker_admin_cap, 200_000_000, initial_symbols, ctx(&mut scenario));
     scenario.return_to_sender(maker_admin_cap);
 
     test_scenario::next_tx(&mut scenario, governor);
@@ -415,7 +392,9 @@ public fun test_order_get_treasury() {
 
     test_scenario::next_tx(&mut scenario, governor);
     let maker_admin_cap = scenario.take_from_sender<MakerVaultAdminCap>();
-    let maker_order_cap = maker_vault::initialize<USDC, ITHACA>(&maker_admin_cap, 200_000_000, ctx(&mut scenario));
+    let mut initial_symbols = vector::empty<string::String>();
+    vector::push_back(&mut initial_symbols, string::utf8(b"BTC"));
+    let maker_order_cap = maker_vault::initialize<USDC, ITHACA>(&maker_admin_cap, 200_000_000, initial_symbols, ctx(&mut scenario));
     scenario.return_to_sender(maker_admin_cap);
 
     test_scenario::next_tx(&mut scenario, governor);
@@ -780,7 +759,7 @@ public fun test_settlement_with_fees_covers_transfer_functions() {
         create_test_clock,
         get_btc_symbol
     };
-    use odyssey_sui::order::{CoordinatorCap, OrderAdminCap};
+    use odyssey_sui::order::{CoordinatorCap};
 
     let mut scenario = setup_test_scenario();
     let (mut vault, mut maker_vault, mut order_manager, clock, _, _) = setup_funded_scenario(&mut scenario, none());
@@ -873,7 +852,6 @@ public fun test_settlement_with_fees_covers_transfer_functions() {
 
 #[test]
 public fun test_set_minimum_stake_amount_multiple_times() {
-    use odyssey_sui::maker_vault::{MakerVaultAdminCap};
 
     let mut scenario = setup_test_scenario();
     let (governor, _, _, _, _, _, _) = get_test_addresses();
@@ -903,7 +881,6 @@ public fun test_set_minimum_stake_amount_multiple_times() {
 
 #[test]
 public fun test_custom_minimum_stake_for_multiple_symbols() {
-    use odyssey_sui::maker_vault::{MakerVaultAdminCap};
 
     let mut scenario = setup_test_scenario();
     let (governor, _, _, _, _, _, _) = get_test_addresses();

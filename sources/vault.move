@@ -17,9 +17,6 @@ const VERSION: u64 = 1;
 const ENotZeroAmount: vector<u8> = b"Amount must be greater than zero";
 
 #[error]
-const ENotZeroAddress: vector<u8> = b"Address cannot be zero";
-
-#[error]
 const EInsufficientBalance: vector<u8> = b"Insufficient balance for this operation";
 
 #[error]
@@ -60,14 +57,23 @@ public struct Vault<phantom T> has key {
 
 /// Emitted when trader deposits assets
 public struct Deposited has copy, drop {
+    vault_id: ID,
     trader: address,
     amount: u64,
 }
 
 /// Emitted when trader withdraws assets
 public struct Withdrawn has copy, drop {
+    vault_id: ID,
     trader: address,
     amount: u64,
+}
+
+/// Emitted when vault is migrated to a new version
+public struct VaultMigrated has copy, drop {
+    vault_id: ID,
+    old_version: u64,
+    new_version: u64,
 }
 
 
@@ -131,6 +137,7 @@ public fun deposit<T>(
 
     // Emit event
     event::emit(Deposited {
+        vault_id: object::id(vault),
         trader: sender,
         amount,
     });
@@ -138,7 +145,7 @@ public fun deposit<T>(
 
 /// Withdraw assets from the vault
 public fun withdraw<T>(
-    order_cap: &OrderCap, // Order capability to restrict access
+    _order_cap: &OrderCap, // Order capability to restrict access
     vault: &mut Vault<T>,
     taker: address,
     amount: u64,
@@ -148,7 +155,7 @@ public fun withdraw<T>(
     assert!(vault.version == VERSION, EWrongVersion);
     assert!(amount > 0, ENotZeroAmount);
 
-    let withdrawable_balance = get_withdrawable_balance_with_locked(order_cap, vault, taker, locked_amount);
+    let withdrawable_balance = get_withdrawable_balance_with_locked(vault, taker, locked_amount);
     
     assert!(amount <= withdrawable_balance, EInsufficientBalance);
 
@@ -164,6 +171,7 @@ public fun withdraw<T>(
 
     // Emit event
     event::emit(Withdrawn {
+        vault_id: object::id(vault),
         trader: taker,
         amount,
     });
@@ -177,7 +185,15 @@ public fun withdraw<T>(
 entry fun migrate<T>(vault: &mut Vault<T>, admin_cap: &VaultAdminCap) {
     assert!(vault.admin == object::id(admin_cap), ENotAdmin);
     assert!(vault.version < VERSION, ENotUpgrade);
+
+    let old_version = vault.version;
     vault.version = VERSION;
+
+    event::emit(VaultMigrated {
+        vault_id: object::id(vault),
+        old_version,
+        new_version: VERSION,
+    });
 }
 
 // Note: Asset type changes not supported in Move - types are immutable after creation
@@ -278,12 +294,10 @@ public fun total_asset_available<T>(vault: &Vault<T>): u64 {
 
 /// Get withdrawable balance considering locked amounts in orders
 public fun get_withdrawable_balance_with_locked<T>(
-    _: &OrderCap, // Order capability to restrict access
-    vault: &Vault<T>, 
-    taker: address, 
+    vault: &Vault<T>,
+    taker: address,
     locked_amount: u64
 ): u64 {
-    assert!(vault.version == VERSION, EWrongVersion);
     let total_balance = taker_balance(vault, taker);
     if (total_balance >= locked_amount) {
         total_balance - locked_amount
@@ -298,16 +312,6 @@ public fun get_withdrawable_balance_with_locked<T>(
 /// Check if vault has sufficient balance for withdrawal
 public fun check_vault_balance<T>(vault: &Vault<T>, amount: u64): bool {
     balance::value(&vault.balance) >= amount
-}
-
-/// Validate that amount is not zero
-public fun validate_amount(amount: u64) {
-    assert!(amount > 0, ENotZeroAmount);
-}
-
-/// Validate that address is not zero
-public fun validate_address(addr: address) {
-    assert!(addr != @0x0, ENotZeroAddress);
 }
 
 // --------------------

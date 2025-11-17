@@ -4,6 +4,7 @@ module odyssey_sui::maker_vault_tests;
 use sui::test_scenario::{Self, ctx};
 use sui::test_utils::assert_eq;
 use std::option::{none, some};
+use std::string;
 
 use odyssey_sui::maker_vault::{Self, MakerVaultAdminCap};
 use odyssey_sui::test_utils::{
@@ -22,13 +23,11 @@ use odyssey_sui::test_utils::{
     USDC,
     ITHACA,
 };
-use odyssey_sui::types;
 use odyssey_sui::order;
 use odyssey_sui::order::CoordinatorCap;
 use odyssey_sui::test_utils::get_minimum_stake;
 use odyssey_sui::test_utils::deposit_trader_funds;
 use odyssey_sui::test_utils::get_btc_symbol;
-use odyssey_sui::maker_vault::EMakerNotAvailable;
 use odyssey_sui::test_utils::get_eth_symbol;
 
 
@@ -63,7 +62,9 @@ public fun test_initialize_fails_with_zero_minimum_stake() {
 
     test_scenario::next_tx(&mut scenario, governor);
     let admin_cap = scenario.take_from_sender<MakerVaultAdminCap>();
-    let order_cap = maker_vault::initialize<USDC, ITHACA>(&admin_cap, 0, ctx(&mut scenario));
+    let mut initial_symbols = vector::empty<string::String>();
+    vector::push_back(&mut initial_symbols, string::utf8(b"BTC"));
+    let order_cap = maker_vault::initialize<USDC, ITHACA>(&admin_cap, 0, initial_symbols, ctx(&mut scenario));
     transfer::public_transfer(order_cap, governor);
     scenario.return_to_sender(admin_cap);
 
@@ -258,6 +259,23 @@ public fun test_set_minimum_stake_success() {
     cleanup_scenario(scenario)
 }
 
+#[test]
+#[expected_failure(abort_code = maker_vault::ENotZeroAmount)]
+public fun test_set_minimum_stake_fails_with_zero() {
+    let mut scenario = setup_test_scenario();
+    let (governor, _, _, _, _, _, _) = get_test_addresses();
+    let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
+    transfer::public_transfer(maker_order_cap, governor);
+
+    test_scenario::next_tx(&mut scenario, governor);
+    let admin_cap = scenario.take_from_sender<MakerVaultAdminCap>();
+    maker_vault::set_minimum_stake_amount(&admin_cap, &mut maker_vault, 0);
+    scenario.return_to_sender(admin_cap);
+
+    test_scenario::return_shared(maker_vault);
+    cleanup_scenario(scenario)
+}
+
 // ==========
 // Set Custom Minimum Stake Tests
 // ==========
@@ -348,6 +366,24 @@ public fun test_custom_minimum_stake_other_asset_allows_deposit() {
     let usdc_eth = mint_usdc(&mut scenario, maker1, 2_000);
     maker_vault::deposit_collateral(&mut maker_vault, eth, usdc_eth, ctx(&mut scenario));
     maker_vault::assert_collateral_deposited_event(maker1, 2_000);
+
+    test_scenario::return_shared(maker_vault);
+    cleanup_scenario(scenario)
+}
+
+#[test]
+#[expected_failure(abort_code = maker_vault::ENotZeroAmount)]
+public fun test_set_custom_minimum_stake_fails_with_zero() {
+    let mut scenario = setup_test_scenario();
+    let (governor, _, _, _, _, _, _) = get_test_addresses();
+    let (mut maker_vault, maker_order_cap) = setup_maker_vault(&mut scenario, none());
+    transfer::public_transfer(maker_order_cap, governor);
+
+    test_scenario::next_tx(&mut scenario, governor);
+    let admin_cap = scenario.take_from_sender<MakerVaultAdminCap>();
+    let btc = get_btc_symbol();
+    maker_vault::set_custom_min_stake_amount(&admin_cap, &mut maker_vault, btc, 0);
+    scenario.return_to_sender(admin_cap);
 
     test_scenario::return_shared(maker_vault);
     cleanup_scenario(scenario)
@@ -639,7 +675,6 @@ public fun test_get_withdrawable_balance_with_locked_view() {
     test_scenario::next_tx(&mut scenario, maker1);
     // Use zero-locked and then some locked to validate subtraction
     let withdrawable_0 = maker_vault::get_withdrawable_balance_with_locked(
-        &maker_order_cap,
         &maker_vault,
         maker1,
         get_btc_symbol(),
@@ -649,7 +684,6 @@ public fun test_get_withdrawable_balance_with_locked_view() {
 
     let locked = 4_000;
     let withdrawable_locked = maker_vault::get_withdrawable_balance_with_locked(
-        &maker_order_cap,
         &maker_vault,
         maker1,
         get_btc_symbol(),

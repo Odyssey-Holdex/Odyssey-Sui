@@ -125,6 +125,7 @@ public struct SettlementAction has drop {
 
 /// Emitted when a new note is created
 public struct NoteCreated has copy, drop {
+    order_manager_id: ID,
     note_id: u64,
     taker: address,
     maker: address,
@@ -135,7 +136,10 @@ public struct NoteCreated has copy, drop {
 
 /// Emitted when a note is settled
 public struct NoteSettled has copy, drop {
+    order_manager_id: ID,
     note_id: u64,
+    taker: address,
+    maker: address,
     status: NoteStatus,
     settlement_price: u64,
     payout: u64,
@@ -144,11 +148,20 @@ public struct NoteSettled has copy, drop {
 
 /// Emitted when fee percentages are changed
 public struct TakerFeePercentageChanged has copy, drop {
+    order_manager_id: ID,
     taker_fee_percentage: u64,
 }
 
 public struct MakerFeePercentageChanged has copy, drop {
+    order_manager_id: ID,
     maker_fee_percentage: u64,
+}
+
+/// Emitted when order manager is migrated to a new version
+public struct OrderManagerMigrated has copy, drop {
+    order_manager_id: ID,
+    old_version: u64,
+    new_version: u64,
 }
 
 // === Initialization ===
@@ -223,6 +236,7 @@ public fun create_note<T, IthacaType>(
     let maker = types::note_maker(&note);
     let symbol = types::note_symbol(&note);
     let spread = types::note_spread(&note);
+    let starting_price = types::note_starting_price(&note);
 
     assert!(amount > 0, EInvalidNote);
     assert!(taker != @0x0, EInvalidNote);
@@ -237,6 +251,8 @@ public fun create_note<T, IthacaType>(
     let start_time = types::note_start_time(&note);
     assert!(almost_win_payout > 0 && almost_win_payout <= win_payout, EInvalidPayout);
     assert!(almost_win_spread <= spread, EInvalidSpread);
+    assert!(starting_price >= spread, EInvalidSpread);
+    assert!(starting_price >= almost_win_spread, EInvalidSpread);
     assert!(start_time <= expiry_time, EInvalidExpiryTime);
 
     // Check balances
@@ -266,6 +282,7 @@ public fun create_note<T, IthacaType>(
 
     // Emit event
     event::emit(NoteCreated {
+        order_manager_id: object::id(order_manager),
         note_id,
         taker,
         maker,
@@ -332,7 +349,10 @@ public fun settle_note<T, IthacaType>(
 
     // Emit event
     event::emit(NoteSettled {
+        order_manager_id: object::id(order_manager),
         note_id,
+        taker: types::note_taker(&note_copy),
+        maker: types::note_maker(&note_copy),
         status: final_status,
         settlement_price: spot_price,
         payout: final_payout,
@@ -344,7 +364,15 @@ public fun settle_note<T, IthacaType>(
 entry fun migrate<T>(order_manager: &mut OrderManager<T>, admin_cap: &OrderAdminCap) {
     assert!(order_manager.admin == object::id(admin_cap), ENotAdmin);
     assert!(order_manager.version < VERSION, ENotUpgrade);
+
+    let old_version = order_manager.version;
     order_manager.version = VERSION;
+
+    event::emit(OrderManagerMigrated {
+        order_manager_id: object::id(order_manager),
+        old_version,
+        new_version: VERSION,
+    });
 }
 
 /// Set taker fee percentage (admin only)
@@ -361,6 +389,7 @@ public fun set_taker_fee_percentage<T>(
     );
 
     event::emit(TakerFeePercentageChanged {
+        order_manager_id: object::id(order_manager),
         taker_fee_percentage,
     });
 }
@@ -379,6 +408,7 @@ public fun set_maker_fee_percentage<T>(
     );
 
     event::emit(MakerFeePercentageChanged {
+        order_manager_id: object::id(order_manager),
         maker_fee_percentage,
     });
 }
@@ -425,7 +455,7 @@ public fun taker_withdrawable_balance<T>(
     taker: address
 ): u64 {
     let locked_amount = taker_locked_balance(order_manager, taker);
-    vault::get_withdrawable_balance_with_locked(&order_manager.vault_order_cap, vault, taker, locked_amount)
+    vault::get_withdrawable_balance_with_locked(vault, taker, locked_amount)
 }
 
 public fun maker_withdrawable_balance<T, IthacaType>(
@@ -435,7 +465,7 @@ public fun maker_withdrawable_balance<T, IthacaType>(
     symbol: String
 ): u64 {
     let locked_amount = maker_locked_balance(order_manager, maker, symbol);
-    maker_vault::get_withdrawable_balance_with_locked(&order_manager.maker_order_cap, maker_vault, maker, symbol, locked_amount)
+    maker_vault::get_withdrawable_balance_with_locked(maker_vault, maker, symbol, locked_amount)
 }
 
 /// Get maker locked balance for specific asset

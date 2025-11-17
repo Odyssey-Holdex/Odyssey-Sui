@@ -42,6 +42,9 @@ const ENotUpgrade: vector<u8> = b"Migration is not an upgrade";
 #[error]
 const EWrongVersion: vector<u8> = b"Calling functions from the wrong package version";
 
+#[error]
+const EInvalidSymbol: vector<u8> = b"Symbol is not allowed for maker registration";
+
 // === Structs ===
 
 /// Administrative capability for maker vault operations
@@ -67,6 +70,8 @@ public struct MakerVault<phantom T, phantom IthacaType> has key {
     minimum_stake_amount: u64,
     /// Custom minimum stake amounts for specific assets
     custom_min_stake_amounts: Table<String, u64>,
+    /// Whitelist of allowed trading symbols
+    allowed_symbols: Table<String, bool>,
     /// The actual collateral coin balance held by the vault
     collateral_balance: Balance<T>,
     /// The Ithaca token balance held by the vault for staking
@@ -84,17 +89,34 @@ public struct MakerSymbolKey has copy, drop, store {
 
 /// Emitted when a maker registers
 public struct MakerRegistered has copy, drop {
+    vault_id: ID,
     maker: address,
+    symbol: String,
     stake_amount: u64,
 }
 
 /// Emitted when a maker unregisters
 public struct MakerUnregistered has copy, drop {
+    vault_id: ID,
     maker: address,
+    symbol: String,
+}
+
+/// Emitted when a symbol is added to allowed list
+public struct SymbolAdded has copy, drop {
+    vault_id: ID,
+    symbol: String,
+}
+
+/// Emitted when a symbol is removed from allowed list
+public struct SymbolRemoved has copy, drop {
+    vault_id: ID,
+    symbol: String,
 }
 
 /// Emitted when maker deposits collateral
 public struct CollateralDeposited has copy, drop {
+    vault_id: ID,
     maker: address,
     symbol: String,
     amount: u64,
@@ -102,6 +124,7 @@ public struct CollateralDeposited has copy, drop {
 
 /// Emitted when maker withdraws collateral
 public struct CollateralWithdrawn has copy, drop {
+    vault_id: ID,
     maker: address,
     symbol: String,
     amount: u64,
@@ -109,13 +132,22 @@ public struct CollateralWithdrawn has copy, drop {
 
 /// Emitted when minimum stake amount is set
 public struct MinimumStakeAmountSet has copy, drop {
+    vault_id: ID,
     amount: u64,
 }
 
 /// Emitted when custom minimum stake amount is set
 public struct CustomMinStakeAmountSet has copy, drop {
+    vault_id: ID,
     symbol: String,
     amount: u64,
+}
+
+/// Emitted when maker vault is migrated to a new version
+public struct MakerVaultMigrated has copy, drop {
+    vault_id: ID,
+    old_version: u64,
+    new_version: u64,
 }
 
 // === Initialization ===
@@ -137,12 +169,24 @@ fun init(ctx: &mut TxContext) {
 public fun initialize<T, IthacaType>(
     admin_cap: &MakerVaultAdminCap,
     minimum_stake_amount: u64,
+    initial_symbols: vector<String>,
     ctx: &mut TxContext
 ): (MakerOrderCap) {
     assert!(minimum_stake_amount > 0, ENotZeroAmount);
-    
+
     let order_cap = MakerOrderCap {
         id: object::new(ctx),
+    };
+
+    let mut allowed_symbols = table::new<String, bool>(ctx);
+
+    // Add initial symbols to the allowed list
+    let mut i = 0;
+    let len = vector::length(&initial_symbols);
+    while (i < len) {
+        let symbol = *vector::borrow(&initial_symbols, i);
+        table::add(&mut allowed_symbols, symbol, true);
+        i = i + 1;
     };
 
     let vault = MakerVault<T, IthacaType> {
@@ -152,6 +196,7 @@ public fun initialize<T, IthacaType>(
         makers: table::new(ctx),
         minimum_stake_amount,
         custom_min_stake_amounts: table::new(ctx),
+        allowed_symbols,
         collateral_balance: balance::zero<T>(),
         ithaca_balance: balance::zero<IthacaType>(),
     };
@@ -169,7 +214,10 @@ public fun register_maker_symbol<T, IthacaType>(
     ctx: &mut TxContext
 ) {
     assert!(vault.version == VERSION, EWrongVersion);
-    
+
+    // Validate that the symbol is allowed
+    assert!(table::contains(&vault.allowed_symbols, symbol), EInvalidSymbol);
+
     let sender = tx_context::sender(ctx);
     let stake_amount = coin::value(&ithaca_payment);
 
@@ -177,7 +225,7 @@ public fun register_maker_symbol<T, IthacaType>(
         maker: sender,
         symbol,
     };
-    
+
     assert!(stake_amount > 0, ENotZeroAmount);
     assert!(!table::contains(&vault.makers, key), EMakerAlreadyRegistered);
 
@@ -194,7 +242,9 @@ public fun register_maker_symbol<T, IthacaType>(
 
     // Emit event
     event::emit(MakerRegistered {
+        vault_id: object::id(vault),
         maker: sender,
+        symbol,
         stake_amount,
     });
 }
@@ -227,7 +277,9 @@ public fun unregister_maker<T, IthacaType>(
 
     // Emit event
     event::emit(MakerUnregistered {
+        vault_id: object::id(vault),
         maker: sender,
+        symbol,
     });
 
     withdrawn_coin
@@ -262,6 +314,7 @@ public fun deposit_collateral<T, IthacaType>(
 
     // Emit event
     event::emit(CollateralDeposited {
+        vault_id: object::id(vault),
         maker: sender,
         symbol,
         amount,
@@ -271,7 +324,7 @@ public fun deposit_collateral<T, IthacaType>(
 /// Withdraw collateral for a specific tradable asset (order module only)
 /// This considers locked amounts in orders for security
 public fun withdraw_collateral<T, IthacaType>(
-    order_cap: &MakerOrderCap,
+    _order_cap: &MakerOrderCap,
     vault: &mut MakerVault<T, IthacaType>,
     maker: address,
     symbol: String,
@@ -288,7 +341,7 @@ public fun withdraw_collateral<T, IthacaType>(
     };
     assert!(table::contains(&vault.makers, key), EMakerNotAvailable);
 
-    let withdrawable_balance = get_withdrawable_balance_with_locked(order_cap, vault, maker, symbol, locked_amount);
+    let withdrawable_balance = get_withdrawable_balance_with_locked(vault, maker, symbol, locked_amount);
     assert!(amount <= withdrawable_balance, EInsufficientCollateral);
 
     let maker_info = table::borrow_mut(&mut vault.makers, key);
@@ -302,6 +355,7 @@ public fun withdraw_collateral<T, IthacaType>(
 
     // Emit event
     event::emit(CollateralWithdrawn {
+        vault_id: object::id(vault),
         maker,
         symbol,
         amount,
@@ -316,7 +370,15 @@ public fun withdraw_collateral<T, IthacaType>(
 entry fun migrate<T, IthacaType>(vault: &mut MakerVault<T, IthacaType>, admin_cap: &MakerVaultAdminCap) {
     assert!(vault.admin == object::id(admin_cap), ENotAdmin);
     assert!(vault.version < VERSION, ENotUpgrade);
+
+    let old_version = vault.version;
     vault.version = VERSION;
+
+    event::emit(MakerVaultMigrated {
+        vault_id: object::id(vault),
+        old_version,
+        new_version: VERSION,
+    });
 }
 
 /// Set minimum stake amount (admin only)
@@ -326,11 +388,57 @@ public fun set_minimum_stake_amount<T, IthacaType>(
     amount: u64,
 ) {
     assert!(vault.version == VERSION, EWrongVersion);
+    assert!(amount > 0, ENotZeroAmount);
     vault.minimum_stake_amount = amount;
 
     event::emit(MinimumStakeAmountSet {
+        vault_id: object::id(vault),
         amount,
     });
+}
+
+/// Add a symbol to the allowed list (admin only)
+public fun add_allowed_symbol<T, IthacaType>(
+    _: &MakerVaultAdminCap,
+    vault: &mut MakerVault<T, IthacaType>,
+    symbol: String,
+) {
+    assert!(vault.version == VERSION, EWrongVersion);
+
+    if (!table::contains(&vault.allowed_symbols, symbol)) {
+        table::add(&mut vault.allowed_symbols, symbol, true);
+
+        event::emit(SymbolAdded {
+            vault_id: object::id(vault),
+            symbol
+        });
+    }
+}
+
+/// Remove a symbol from the allowed list (admin only)
+public fun remove_allowed_symbol<T, IthacaType>(
+    _: &MakerVaultAdminCap,
+    vault: &mut MakerVault<T, IthacaType>,
+    symbol: String,
+) {
+    assert!(vault.version == VERSION, EWrongVersion);
+
+    if (table::contains(&vault.allowed_symbols, symbol)) {
+        table::remove(&mut vault.allowed_symbols, symbol);
+
+        event::emit(SymbolRemoved {
+            vault_id: object::id(vault),
+            symbol
+        });
+    }
+}
+
+/// Check if a symbol is allowed
+public fun is_symbol_allowed<T, IthacaType>(
+    vault: &MakerVault<T, IthacaType>,
+    symbol: String,
+): bool {
+    table::contains(&vault.allowed_symbols, symbol)
 }
 
 /// Set custom minimum stake amount for specific asset (admin only)
@@ -341,14 +449,16 @@ public fun set_custom_min_stake_amount<T, IthacaType>(
     amount: u64,
 ) {
     assert!(vault.version == VERSION, EWrongVersion);
-    
+    assert!(amount > 0, ENotZeroAmount);
+
     if (table::contains(&vault.custom_min_stake_amounts, symbol)) {
         table::remove(&mut vault.custom_min_stake_amounts, symbol);
     };
-    
+
     table::add(&mut vault.custom_min_stake_amounts, symbol, amount);
 
     event::emit(CustomMinStakeAmountSet {
+        vault_id: object::id(vault),
         symbol,
         amount,
     });
@@ -475,13 +585,11 @@ public fun get_maker_collateral<T, IthacaType>(
 
 /// Get withdrawable balance considering locked amounts in orders
 public fun get_withdrawable_balance_with_locked<T, IthacaType>(
-    _: &MakerOrderCap,
-    vault: &MakerVault<T, IthacaType>, 
-    maker: address, 
+    vault: &MakerVault<T, IthacaType>,
+    maker: address,
     symbol: String,
     locked_amount: u64
 ): u64 {
-    assert!(vault.version == VERSION, EWrongVersion);
     let total_collateral = get_maker_collateral(vault, maker, symbol);
     if (total_collateral >= locked_amount) {
         total_collateral - locked_amount
